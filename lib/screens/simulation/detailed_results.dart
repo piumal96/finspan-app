@@ -2,12 +2,220 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../theme/finspan_theme.dart';
 import '../../widgets/finspan_card.dart';
+import '../onboarding/onboarding_data.dart';
+import '../../widgets/life_bar.dart';
+import '../../services/simulation_service.dart';
+import '../../models/simulation_models.dart';
+import '../dashboard/main_dashboard.dart';
 
-class DetailedResultsScreen extends StatelessWidget {
-  const DetailedResultsScreen({super.key});
+class DetailedResultsScreen extends StatefulWidget {
+  final OnboardingData data;
+  const DetailedResultsScreen({super.key, required this.data});
+
+  @override
+  State<DetailedResultsScreen> createState() => _DetailedResultsScreenState();
+}
+
+class _DetailedResultsScreenState extends State<DetailedResultsScreen> {
+  late SimulationResult _result;
+  final SimulationService _simService = SimulationService();
+  late List<LifeEvent> _displayEvents;
+  late int _currentAge;
+  bool _isCalculated = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentAge = widget.data.currentAge;
+    _displayEvents = List.from(widget.data.lifeEvents);
+    if (_displayEvents.isEmpty) {
+      _displayEvents.addAll([
+        LifeEvent(
+          id: '1',
+          type: LifeEventType.job,
+          name: 'Current Job',
+          startAge: _currentAge,
+        ),
+        LifeEvent(
+          id: '2',
+          type: LifeEventType.home,
+          name: 'Buy Home',
+          startAge: _currentAge + 5,
+        ),
+        LifeEvent(
+          id: '4',
+          type: LifeEventType.retirement,
+          name: 'Retirement',
+          startAge: widget.data.retirementAge,
+        ),
+      ]);
+    }
+    _runSimulation();
+  }
+
+  void _runSimulation() {
+    setState(() {
+      // Create a temporary data object with updated current age and events for simulation
+      final tempData = widget.data.copyWith(
+        currentAge: _currentAge,
+        lifeEvents: _displayEvents,
+      );
+      _result = _simService.runSimulation(tempData);
+      _isCalculated = true;
+    });
+  }
+
+  void _onAgeChange(int newAge) {
+    if (newAge != _currentAge) {
+      setState(() {
+        _currentAge = newAge;
+      });
+      _runSimulation();
+    }
+  }
+
+  void _onEventMove(String id, int newAge) {
+    final index = _displayEvents.indexWhere((e) => e.id == id);
+    if (index != -1 && _displayEvents[index].startAge != newAge) {
+      setState(() {
+        final oldEvent = _displayEvents[index];
+        _displayEvents[index] = LifeEvent(
+          id: oldEvent.id,
+          type: oldEvent.type,
+          name: oldEvent.name,
+          startAge: newAge,
+          endAge: oldEvent.endAge != null
+              ? (newAge + (oldEvent.endAge! - oldEvent.startAge))
+              : null,
+          params: oldEvent.params,
+        );
+      });
+      _runSimulation();
+    }
+  }
+
+  void _onAddEvent(int age) {
+    _showEventDialog(age);
+  }
+
+  void _onEventTap(LifeEvent event) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Edit ${event.name}'),
+        content: Text(
+          'Would you like to remove this event or edit its duration?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              setState(() {
+                _displayEvents.removeWhere((e) => e.id == event.id);
+              });
+              _runSimulation();
+              Navigator.pop(context);
+            },
+            child: const Text('Remove', style: TextStyle(color: Colors.red)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showEventDialog(int age) {
+    String name = '';
+    LifeEventType selectedType = LifeEventType.job;
+    int duration = 0;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text('Add Event at Age $age'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                decoration: const InputDecoration(
+                  labelText: 'Event Name',
+                  hintText: 'e.g. New Car, Wedding',
+                ),
+                onChanged: (val) => name = val,
+              ),
+              const SizedBox(height: 16),
+              DropdownButton<LifeEventType>(
+                value: selectedType,
+                isExpanded: true,
+                items: LifeEventType.values.map((type) {
+                  return DropdownMenuItem(
+                    value: type,
+                    child: Text(type.toString().split('.').last.toUpperCase()),
+                  );
+                }).toList(),
+                onChanged: (val) {
+                  if (val != null) setDialogState(() => selectedType = val);
+                },
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                decoration: const InputDecoration(
+                  labelText: 'Duration (Years)',
+                  hintText: '0 for one-time event',
+                ),
+                keyboardType: TextInputType.number,
+                onChanged: (val) => duration = int.tryParse(val) ?? 0,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (name.isNotEmpty) {
+                  setState(() {
+                    _displayEvents.add(
+                      LifeEvent(
+                        id: DateTime.now().millisecondsSinceEpoch.toString(),
+                        type: selectedType,
+                        name: name,
+                        startAge: age,
+                        endAge: duration > 0 ? (age + duration) : null,
+                      ),
+                    );
+                  });
+                  _runSimulation();
+                  Navigator.pop(context);
+                }
+              },
+              child: const Text('Add'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (!_isCalculated) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    double maxWealth = 0;
+    for (var year in _result.years) {
+      if (year.total > maxWealth) maxWealth = year.total;
+    }
+    double dynamicMaxY = (maxWealth * 1.2)
+        .clamp(1000000, 1000000000)
+        .toDouble();
+
     return Scaffold(
       backgroundColor: FinSpanTheme.backgroundLight,
       appBar: AppBar(
@@ -16,20 +224,11 @@ class DetailedResultsScreen extends StatelessWidget {
         centerTitle: true,
         leading: const BackButton(color: FinSpanTheme.charcoal),
         title: Text(
-          'Simulation Results',
+          'Detailed Results',
           style: Theme.of(
             context,
           ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(
-              Icons.share_outlined,
-              color: FinSpanTheme.charcoal,
-            ),
-            onPressed: () {},
-          ),
-        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -37,301 +236,217 @@ class DetailedResultsScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Hero Gauge Card
+              _buildWealthChart(context, dynamicMaxY),
+              const SizedBox(height: 24),
               FinSpanCard(
-                child: Column(
-                  children: [
-                    SizedBox(
-                      height: 180,
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          PieChart(
-                            PieChartData(
-                              sectionsSpace: 0,
-                              centerSpaceRadius: 70,
-                              startDegreeOffset: 270,
-                              sections: [
-                                PieChartSectionData(
-                                  color: FinSpanTheme.primaryGreen,
-                                  value: 92,
-                                  title: '',
-                                  radius: 16,
-                                ),
-                                PieChartSectionData(
-                                  color: FinSpanTheme.dividerColor,
-                                  value: 8,
-                                  title: '',
-                                  radius: 12,
-                                ),
-                              ],
-                            ),
-                          ),
-                          Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                '92%',
-                                style: Theme.of(context).textTheme.displayLarge
-                                    ?.copyWith(
-                                      color: FinSpanTheme.primaryGreen,
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'High Probability of Success',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Based on 10,000 market simulations',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
+                child: FinSpanLifeBar(
+                  currentAge: _currentAge,
+                  retirementAge: widget.data.retirementAge,
+                  lifeExpectancy: widget.data.lifeExpectancy,
+                  events: _displayEvents,
+                  onAddEvent: _onAddEvent,
+                  onEventTap: _onEventTap,
+                  onEventMove: _onEventMove,
+                  onAgeChange: _onAgeChange,
                 ),
               ),
               const SizedBox(height: 24),
-
-              // Chart Card
-              FinSpanCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Projected Wealth Trajectory',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 24),
-                    SizedBox(
-                      height: 220,
-                      child: LineChart(
-                        LineChartData(
-                          gridData: FlGridData(
-                            show: true,
-                            drawVerticalLine: false,
-                            horizontalInterval: 50,
-                            getDrawingHorizontalLine: (value) {
-                              return FlLine(
-                                color: FinSpanTheme.dividerColor,
-                                strokeWidth: 1,
-                              );
-                            },
-                          ),
-                          titlesData: FlTitlesData(
-                            show: true,
-                            rightTitles: const AxisTitles(
-                              sideTitles: SideTitles(showTitles: false),
-                            ),
-                            topTitles: const AxisTitles(
-                              sideTitles: SideTitles(showTitles: false),
-                            ),
-                            bottomTitles: AxisTitles(
-                              sideTitles: SideTitles(
-                                showTitles: true,
-                                reservedSize: 30,
-                                interval: 10,
-                                getTitlesWidget: (value, meta) {
-                                  if (value % 10 == 0 &&
-                                      value >= 40 &&
-                                      value <= 90) {
-                                    return Padding(
-                                      padding: const EdgeInsets.only(top: 8.0),
-                                      child: Text(
-                                        '${value.toInt()}',
-                                        style: Theme.of(
-                                          context,
-                                        ).textTheme.bodySmall,
-                                      ),
-                                    );
-                                  }
-                                  return const SizedBox.shrink();
-                                },
-                              ),
-                            ),
-                            leftTitles: AxisTitles(
-                              sideTitles: SideTitles(
-                                showTitles: true,
-                                interval: 50,
-                                reservedSize: 42,
-                                getTitlesWidget: (value, meta) {
-                                  if (value == 0)
-                                    return const SizedBox.shrink();
-                                  return Text(
-                                    '${value.toInt()}M',
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.bodySmall,
-                                  );
-                                },
-                              ),
-                            ),
-                          ),
-                          borderData: FlBorderData(show: false),
-                          minX: 35,
-                          maxX: 90,
-                          minY: 0,
-                          maxY: 150,
-                          lineBarsData: [
-                            // 90th percentile bounds (top)
-                            LineChartBarData(
-                              spots: const [
-                                FlSpot(35, 45),
-                                FlSpot(45, 60),
-                                FlSpot(55, 90),
-                                FlSpot(65, 120),
-                                FlSpot(75, 140),
-                                FlSpot(85, 130),
-                                FlSpot(90, 120),
-                              ],
-                              isCurved: true,
-                              color: FinSpanTheme.primaryGreen.withValues(
-                                alpha: 0.1,
-                              ),
-                              barWidth: 0,
-                              isStrokeCapRound: true,
-                              dotData: const FlDotData(show: false),
-                              belowBarData: BarAreaData(
-                                show: true,
-                                color: FinSpanTheme.primaryGreen.withValues(
-                                  alpha: 0.1,
-                                ),
-                              ),
-                            ),
-                            // Median line
-                            LineChartBarData(
-                              spots: const [
-                                FlSpot(35, 45),
-                                FlSpot(45, 55),
-                                FlSpot(55, 75),
-                                FlSpot(65, 100),
-                                FlSpot(75, 120),
-                                FlSpot(85, 100),
-                                FlSpot(90, 85),
-                              ],
-                              isCurved: true,
-                              color: FinSpanTheme.primaryGreen,
-                              barWidth: 3,
-                              isStrokeCapRound: true,
-                              dotData: const FlDotData(show: false),
-                            ),
-                            // 10th percentile bounds (bottom mask) - simple visual trick
-                            LineChartBarData(
-                              spots: const [
-                                FlSpot(35, 45),
-                                FlSpot(45, 50),
-                                FlSpot(55, 60),
-                                FlSpot(65, 75),
-                                FlSpot(75, 80),
-                                FlSpot(85, 40),
-                                FlSpot(90, 15),
-                              ],
-                              isCurved: true,
-                              color: FinSpanTheme.white,
-                              barWidth: 0,
-                              isStrokeCapRound: true,
-                              dotData: const FlDotData(show: false),
-                              belowBarData: BarAreaData(
-                                show: true,
-                                color: FinSpanTheme.white,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Key Takeaways
-              FinSpanCard(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                      child: Text(
-                        'Key Takeaways',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                    ),
-                    const Divider(height: 1, color: FinSpanTheme.dividerColor),
-                    ListTile(
-                      leading: const Icon(
-                        Icons.check_circle_outline,
-                        color: FinSpanTheme.primaryGreen,
-                      ),
-                      title: Text(
-                        'Projected Shortfall Age',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                      trailing: Text(
-                        'None',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: FinSpanTheme.primaryGreen,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    const Divider(height: 1, color: FinSpanTheme.dividerColor),
-                    ListTile(
-                      leading: const Icon(
-                        Icons.account_balance,
-                        color: FinSpanTheme.bodyGray,
-                      ),
-                      title: Text(
-                        'Median Ending Wealth',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                      trailing: Text(
-                        'LKR 120M',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    const Divider(height: 1, color: FinSpanTheme.dividerColor),
-                    ListTile(
-                      leading: const Icon(
-                        Icons.warning_amber_rounded,
-                        color: Colors.orangeAccent,
-                      ),
-                      title: Text(
-                        'Worst Case (10th %ile)',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                      trailing: Text(
-                        'LKR 15M',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              _buildKeyTakeaways(context),
               const SizedBox(height: 32),
-
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: () {
-                    Navigator.pop(context); // Go back to dashboard conceptually
+                    // Redirect to dashboard with results, clearing the stack
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => MainDashboardScreen(
+                          result: _result,
+                          data: widget.data.copyWith(
+                            lifeEvents: _displayEvents,
+                            currentAge: _currentAge,
+                          ),
+                          fromSim: true,
+                        ),
+                      ),
+                      (route) => false,
+                    );
                   },
-                  child: const Text('Save Plan'),
+                  child: const Text('Return to Dashboard'),
                 ),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildWealthChart(BuildContext context, double dynamicMaxY) {
+    return FinSpanCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Wealth Trajectory',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const Icon(
+                Icons.info_outline,
+                size: 16,
+                color: FinSpanTheme.bodyGray,
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          SizedBox(
+            height: 220,
+            child: LineChart(
+              LineChartData(
+                lineTouchData: LineTouchData(
+                  touchTooltipData: LineTouchTooltipData(
+                    getTooltipColor: (spot) =>
+                        FinSpanTheme.charcoal.withValues(alpha: 0.9),
+                    getTooltipItems: (List<LineBarSpot> touchedSpots) {
+                      return touchedSpots.map((spot) {
+                        return LineTooltipItem(
+                          'Age ${spot.x.toInt()}\nLKR ${(spot.y / 1000000).toStringAsFixed(2)}M',
+                          const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        );
+                      }).toList();
+                    },
+                  ),
+                ),
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  horizontalInterval: dynamicMaxY / 5,
+                  getDrawingHorizontalLine: (value) =>
+                      FlLine(color: FinSpanTheme.dividerColor, strokeWidth: 1),
+                ),
+                titlesData: FlTitlesData(
+                  show: true,
+                  rightTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  topTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 30,
+                      interval: 10,
+                      getTitlesWidget: (value, meta) {
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 8.0),
+                          child: Text(
+                            '${value.toInt()}',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 45,
+                      getTitlesWidget: (value, meta) {
+                        if (value == 0) return const SizedBox.shrink();
+                        if (value >= 1000000)
+                          return Text(
+                            '${(value / 1000000).toInt()}M',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          );
+                        return Text(
+                          '${(value / 1000).toInt()}K',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                borderData: FlBorderData(show: false),
+                minX: _currentAge.toDouble(),
+                maxX: widget.data.lifeExpectancy.toDouble(),
+                minY: 0,
+                maxY: dynamicMaxY,
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: _result.years
+                        .map((y) => FlSpot(y.age.toDouble(), y.total))
+                        .toList(),
+                    isCurved: true,
+                    color: FinSpanTheme.primaryGreen,
+                    barWidth: 4,
+                    isStrokeCapRound: true,
+                    dotData: const FlDotData(show: false),
+                    belowBarData: BarAreaData(
+                      show: true,
+                      color: FinSpanTheme.primaryGreen.withValues(alpha: 0.1),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildKeyTakeaways(BuildContext context) {
+    return FinSpanCard(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        children: [
+          ListTile(
+            leading: Icon(
+              _result.shortfallAge == null
+                  ? Icons.check_circle_outline
+                  : Icons.warning_amber_rounded,
+              color: _result.shortfallAge == null
+                  ? FinSpanTheme.primaryGreen
+                  : Colors.orangeAccent,
+            ),
+            title: const Text('Projected Shortfall Age'),
+            trailing: Text(
+              _result.shortfallAge == null
+                  ? 'None'
+                  : 'Age ${_result.shortfallAge}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.account_balance_wallet_outlined),
+            title: const Text('Ending Wealth'),
+            trailing: Text(
+              'LKR ${(_result.endingWealth / 1000000).toStringAsFixed(1)}M',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.trending_up),
+            title: const Text('Peak Wealth'),
+            trailing: Text(
+              'LKR ${(_result.years.map((y) => y.total).reduce((a, b) => a > b ? a : b) / 1000000).toStringAsFixed(1)}M',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
       ),
     );
   }

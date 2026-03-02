@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/finspan_theme.dart';
-import 'onboarding/onboarding_step_1.dart';
+import 'onboarding/onboarding_wrapper.dart';
 
 class SplashScreen extends StatelessWidget {
   const SplashScreen({super.key});
@@ -94,7 +94,7 @@ class SplashScreen extends StatelessWidget {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const OnboardingStep1Screen(),
+                            builder: (context) => const OnboardingWrapper(),
                           ),
                         );
                       },

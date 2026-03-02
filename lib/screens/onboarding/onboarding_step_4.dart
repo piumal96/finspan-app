@@ -1,220 +1,238 @@
 import 'package:flutter/material.dart';
 import '../../theme/finspan_theme.dart';
-import '../../widgets/progress_bar.dart';
-import 'onboarding_step_5.dart';
+
+import 'onboarding_data.dart';
 
 class OnboardingStep4Screen extends StatefulWidget {
-  const OnboardingStep4Screen({super.key});
+  final VoidCallback onNext;
+  final OnboardingData data;
+  const OnboardingStep4Screen({
+    super.key,
+    required this.onNext,
+    required this.data,
+  });
 
   @override
   State<OnboardingStep4Screen> createState() => _OnboardingStep4ScreenState();
 }
 
 class _OnboardingStep4ScreenState extends State<OnboardingStep4Screen> {
-  double _workUntilAge = 69;
-  final TextEditingController _salaryController = TextEditingController(
-    text: "100,000",
-  );
-  final TextEditingController _spendingController = TextEditingController(
-    text: "75,000",
-  );
-  final TextEditingController _inflationController = TextEditingController(
-    text: "2.5",
-  );
-  String _selectedTaxBracket = "10%";
+  late TextEditingController _salaryController;
+  late TextEditingController _spouseSalaryController;
+  late TextEditingController _spendingController;
+  late TextEditingController _inflationController;
+
+  @override
+  void initState() {
+    super.initState();
+    _salaryController = TextEditingController(
+      text: widget.data.currentSalary.toInt().toString(),
+    );
+    _spouseSalaryController = TextEditingController(
+      text: widget.data.spouseSalary.toInt().toString(),
+    );
+    _spendingController = TextEditingController(
+      text: widget.data.currentExpenses.toInt().toString(),
+    );
+    _inflationController = TextEditingController(
+      text: widget.data.generalInflation.toString(),
+    );
+
+    _salaryController.addListener(_onIncomeChanged);
+    _spouseSalaryController.addListener(_onIncomeChanged);
+  }
+
+  @override
+  void dispose() {
+    _salaryController.dispose();
+    _spouseSalaryController.dispose();
+    _spendingController.dispose();
+    _inflationController.dispose();
+    super.dispose();
+  }
+
+  void _onIncomeChanged() {
+    final salary =
+        double.tryParse(_salaryController.text.replaceAll(',', '')) ?? 0;
+    final spouseSalary =
+        double.tryParse(_spouseSalaryController.text.replaceAll(',', '')) ?? 0;
+    widget.data.currentSalary = salary;
+    widget.data.spouseSalary = spouseSalary;
+
+    // Web Auto-calc: 75% of total household income
+    final totalIncome = salary + spouseSalary;
+    final recommendedSpending = totalIncome * 0.75;
+
+    setState(() {
+      _spendingController.text = recommendedSpending.toInt().toString();
+      widget.data.currentExpenses = recommendedSpending;
+
+      // Basic Tax Recommendation Logic (Mocking web logic)
+      if (totalIncome > 400000)
+        widget.data.taxTargetBracket = "35%";
+      else if (totalIncome > 200000)
+        widget.data.taxTargetBracket = "24%";
+      else if (totalIncome > 100000)
+        widget.data.taxTargetBracket = "22%";
+      else
+        widget.data.taxTargetBracket = "12%";
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: FinSpanTheme.charcoal),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          "Employment & Income",
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: FinSpanTheme.charcoal,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const OnboardingStep5Screen(),
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+        child: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Text(
+                        "Employment & Income",
+                        style: Theme.of(context).textTheme.displayLarge
+                            ?.copyWith(
+                              fontSize: 28,
+                              color: FinSpanTheme.charcoal,
+                              fontWeight: FontWeight.bold,
+                            ),
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+
+                    _buildSectionHeader(
+                      Icons.work_outline_rounded,
+                      "Your Employment",
+                    ),
+                    _buildInputBox(
+                      controller: _salaryController,
+                      prefix: "\$ ",
+                      hint: "100,000",
+                      label: "Annual Salary",
+                    ),
+                    const SizedBox(height: 16),
+                    _buildAgeSlider(
+                      "Your Work Until Age",
+                      widget.data.retirementAge.toDouble(),
+                      (val) => setState(
+                        () => widget.data.retirementAge = val.toInt(),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    if (widget.data.includePartner) ...[
+                      _buildInputBox(
+                        controller: _spouseSalaryController,
+                        prefix: "\$ ",
+                        hint: "80,000",
+                        label: "Spouse Annual Salary",
+                      ),
+                      const SizedBox(height: 16),
+                      _buildAgeSlider(
+                        "Spouse Work Until Age",
+                        (widget.data.spouseRetirementAge ??
+                                widget.data.retirementAge)
+                            .toDouble(),
+                        (val) => setState(
+                          () => widget.data.spouseRetirementAge = val.toInt(),
+                        ),
+                      ),
+                    ],
+
+                    const SizedBox(height: 32),
+                    _buildSectionHeader(
+                      Icons.shopping_bag_outlined,
+                      "Spending Goals",
+                    ),
+                    _buildInputBox(
+                      controller: _spendingController,
+                      prefix: "\$ ",
+                      hint: "75,000",
+                      label: "Annual Spending Goal",
+                    ),
+                    const SizedBox(height: 16),
+                    _buildInputBox(
+                      controller: _inflationController,
+                      suffix: " %",
+                      hint: "2.5",
+                      label: "Expected Inflation Rate",
+                    ),
+
+                    const SizedBox(height: 32),
+                    _buildSectionHeader(
+                      Icons.percent_rounded,
+                      "Tax Strategy",
+                      trailing: widget.data.taxTargetBracket,
+                    ),
+                    _buildTaxBracketSelector(),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8.0, left: 4),
+                      child: Text(
+                        "Auto-calculated based on your income and spending. Current bracket: ${widget.data.taxTargetBracket}",
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: FinSpanTheme.bodyGray,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+                  ],
                 ),
-              );
-            },
-            child: const Text(
-              "Skip",
-              style: TextStyle(
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton(
+                onPressed: widget.onNext,
+                style: ElevatedButton.styleFrom(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(28),
+                  ),
+                ),
+                child: const Text('Continue'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(IconData icon, String title, {String? trailing}) {
+    return Row(
+      children: [
+        Icon(icon, size: 20, color: FinSpanTheme.primaryGreen),
+        const SizedBox(width: 12),
+        Text(
+          title,
+          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13),
+        ),
+        if (trailing != null) ...[
+          const Spacer(),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: FinSpanTheme.primaryGreen.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              "Target : $trailing",
+              style: const TextStyle(
+                fontSize: 10,
                 color: FinSpanTheme.primaryGreen,
                 fontWeight: FontWeight.bold,
               ),
             ),
           ),
         ],
-      ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
-          child: Column(
-            children: [
-              const FinSpanProgressBar(
-                totalSteps: 6,
-                currentStep: 4,
-                showHeader: false,
-              ),
-              const SizedBox(height: 24),
-              Expanded(
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Your Employment Section
-                      _buildSectionHeader("Your Employment"),
-                      const SizedBox(height: 16),
-                      _buildInputLabel("Annual Salary"),
-                      _buildInputBox(
-                        controller: _salaryController,
-                        prefix: "\$ ",
-                        hint: "100,000",
-                      ),
-                      const SizedBox(height: 24),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          _buildInputLabel("Work Until Age"),
-                          Text(
-                            "Age ${_workUntilAge.toInt()}",
-                            style: Theme.of(context).textTheme.titleMedium
-                                ?.copyWith(
-                                  color: FinSpanTheme.primaryGreen,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                          ),
-                        ],
-                      ),
-                      _buildSlider(
-                        value: _workUntilAge,
-                        min: 50,
-                        max: 80,
-                        onChanged: (val) => setState(() => _workUntilAge = val),
-                      ),
-                      Text(
-                        "Retire at age ${_workUntilAge.toInt()}",
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: FinSpanTheme.bodyGray,
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                      const SizedBox(height: 32),
-
-                      // Spending Goals Section
-                      _buildSectionHeader("Spending Goals"),
-                      const SizedBox(height: 16),
-                      _buildInputLabel("Annual Spending Goal"),
-                      _buildInputBox(
-                        controller: _spendingController,
-                        prefix: "\$ ",
-                        hint: "75,000",
-                      ),
-                      const SizedBox(height: 16),
-                      _buildInputLabel("Expected Inflation Rate"),
-                      _buildInputBox(
-                        controller: _inflationController,
-                        suffix: "%",
-                        hint: "2.5",
-                      ),
-                      const SizedBox(height: 32),
-
-                      // Tax Strategy Section
-                      _buildSectionHeader("Tax Strategy"),
-                      const SizedBox(height: 16),
-                      _buildInputLabel("Target Tax Bracket Rate"),
-                      _buildTaxBracketSelector(),
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: FinSpanTheme.primaryGreen.withValues(
-                            alpha: 0.05,
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          "Auto-calculated based on your income and spending. Current bracket: $_selectedTaxBracket",
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(
-                                color: FinSpanTheme.charcoal.withValues(
-                                  alpha: 0.8,
-                                ),
-                                fontSize: 12,
-                              ),
-                        ),
-                      ),
-                      const SizedBox(height: 32),
-                    ],
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const OnboardingStep5Screen(),
-                      ),
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(28),
-                    ),
-                  ),
-                  child: const Text('Continue'),
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSectionHeader(String title) {
-    return Text(
-      title,
-      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-        color: FinSpanTheme.charcoal,
-        fontWeight: FontWeight.bold,
-      ),
-    );
-  }
-
-  Widget _buildInputLabel(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
-      child: Text(
-        text,
-        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-          fontWeight: FontWeight.bold,
-          color: FinSpanTheme.charcoal,
-        ),
-      ),
+      ],
     );
   }
 
@@ -223,124 +241,145 @@ class _OnboardingStep4ScreenState extends State<OnboardingStep4Screen> {
     String? prefix,
     String? suffix,
     required String hint,
+    required String label,
   }) {
     return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: FinSpanTheme.backgroundLight,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: FinSpanTheme.dividerColor),
-        boxShadow: [
-          BoxShadow(
-            color: FinSpanTheme.charcoal.withValues(alpha: 0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(fontSize: 12, color: FinSpanTheme.bodyGray),
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              if (prefix != null)
+                Text(
+                  prefix,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey,
+                  ),
+                ),
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: hint,
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+              ),
+              if (suffix != null)
+                Text(
+                  suffix,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey,
+                  ),
+                ),
+            ],
           ),
         ],
-      ),
-      child: TextFormField(
-        controller: controller,
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-          color: FinSpanTheme.charcoal,
-          fontWeight: FontWeight.bold,
-        ),
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: InputDecoration(
-          prefixIcon: prefix != null
-              ? Padding(
-                  padding: const EdgeInsets.only(left: 16, right: 8),
-                  child: Text(
-                    prefix,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: FinSpanTheme.primaryGreen,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                )
-              : null,
-          prefixIconConstraints: const BoxConstraints(
-            minWidth: 0,
-            minHeight: 0,
-          ),
-          suffixIcon: suffix != null
-              ? Padding(
-                  padding: const EdgeInsets.only(right: 16, left: 8),
-                  child: Text(
-                    suffix,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: FinSpanTheme.bodyGray,
-                    ),
-                  ),
-                )
-              : null,
-          suffixIconConstraints: const BoxConstraints(
-            minWidth: 0,
-            minHeight: 0,
-          ),
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(
-            vertical: 18,
-            horizontal: 16,
-          ),
-          hintText: hint,
-        ),
       ),
     );
   }
 
-  Widget _buildSlider({
-    required double value,
-    required double min,
-    required double max,
-    required ValueChanged<double> onChanged,
-  }) {
-    return SliderTheme(
-      data: SliderTheme.of(context).copyWith(
-        activeTrackColor: FinSpanTheme.primaryGreen,
-        inactiveTrackColor: FinSpanTheme.dividerColor,
-        thumbColor: FinSpanTheme.primaryGreen,
-        overlayColor: FinSpanTheme.primaryGreen.withValues(alpha: 0.1),
-        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10),
-        trackHeight: 4,
+  Widget _buildAgeSlider(
+    String label,
+    double value,
+    Function(double) onChanged,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: FinSpanTheme.backgroundLight,
+        borderRadius: BorderRadius.circular(16),
       ),
-      child: Slider(value: value, min: min, max: max, onChanged: onChanged),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                label,
+                style: TextStyle(fontSize: 12, color: FinSpanTheme.bodyGray),
+              ),
+              Text(
+                "Age ${value.toInt()}",
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          Slider(
+            value: value,
+            min: 50,
+            max: 85,
+            activeColor: FinSpanTheme.primaryGreen,
+            inactiveColor: FinSpanTheme.dividerColor,
+            onChanged: onChanged,
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                "Retire at age ${value.toInt()}",
+                style: TextStyle(fontSize: 10, color: FinSpanTheme.bodyGray),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildTaxBracketSelector() {
-    final List<String> brackets = ["10%", "12%", "22%", "24%", "32%"];
-    return Row(
-      children: brackets.map((bracket) {
-        final isSelected = _selectedTaxBracket == bracket;
-        return Expanded(
-          child: GestureDetector(
-            onTap: () => setState(() => _selectedTaxBracket = bracket),
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      height: 40,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: ["10%", "12%", "22%", "24%", "32%", "35%", "37%"].map((rate) {
+          bool isSelected = widget.data.taxTargetBracket == rate;
+          return GestureDetector(
+            onTap: () => setState(() => widget.data.taxTargetBracket = rate),
             child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 4),
-              padding: const EdgeInsets.symmetric(vertical: 12),
+              margin: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
               decoration: BoxDecoration(
                 color: isSelected ? FinSpanTheme.primaryGreen : Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: isSelected
-                      ? FinSpanTheme.primaryGreen
-                      : FinSpanTheme.dividerColor,
-                ),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: FinSpanTheme.dividerColor),
               ),
               child: Center(
                 child: Text(
-                  bracket,
+                  rate,
                   style: TextStyle(
-                    color: isSelected ? Colors.white : FinSpanTheme.charcoal,
-                    fontWeight: isSelected
-                        ? FontWeight.bold
-                        : FontWeight.normal,
+                    color: isSelected ? Colors.white : Colors.black,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
                   ),
                 ),
               ),
             ),
-          ),
-        );
-      }).toList(),
+          );
+        }).toList(),
+      ),
     );
   }
 }
