@@ -878,6 +878,9 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen> {
                 maximum: _lifeExpectancy.toDouble(),
                 interval: 10,
                 majorGridLines: const MajorGridLines(width: 0),
+                axisLabelFormatter: (AxisLabelRenderDetails d) {
+                  return ChartAxisLabel('Age ${d.value.toInt()}', null);
+                },
                 plotBands: [
                   PlotBand(
                     isVisible: true,
@@ -919,21 +922,30 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen> {
               series: <CartesianSeries>[
                 if (_enableMonteCarlo && _mcResult != null) ...[
                   SplineSeries<LocalWealthPoint, double>(
+                    dataSource: _wealthData, // The deterministic base plan
+                    xValueMapper: (d, _) => d.age.toDouble(),
+                    yValueMapper: (d, _) => d.total,
+                    color: const Color(0xFF6366F1), // Indigo/Blue
+                    name: 'Your Plan',
+                    animationDuration: 0,
+                    width: 3,
+                  ),
+                  SplineSeries<LocalWealthPoint, double>(
                     dataSource: _mcResult!.p90,
                     xValueMapper: (d, _) => d.age.toDouble(),
                     yValueMapper: (d, _) => d.total,
-                    color: FinSpanTheme.primaryGreen.withValues(alpha: 0.5),
-                    name: 'Lucky (90th)',
+                    color: FinSpanTheme.primaryGreen.withValues(alpha: 0.8),
+                    name: '90th Percentile',
                     animationDuration: 0,
                     dashArray: const <double>[5, 5],
-                    width: 2,
+                    width: 1.5,
                   ),
                   SplineSeries<LocalWealthPoint, double>(
                     dataSource: _mcResult!.median,
                     xValueMapper: (d, _) => d.age.toDouble(),
                     yValueMapper: (d, _) => d.total,
-                    color: FinSpanTheme.charcoal.withValues(alpha: 0.8),
-                    name: 'Median (50th)',
+                    color: const Color(0xFFF59E0B), // Orange
+                    name: '50th Percentile',
                     animationDuration: 0,
                     width: 2,
                   ),
@@ -941,11 +953,11 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen> {
                     dataSource: _mcResult!.p10,
                     xValueMapper: (d, _) => d.age.toDouble(),
                     yValueMapper: (d, _) => d.total,
-                    color: Colors.red.withValues(alpha: 0.5),
-                    name: 'Unlucky (10th)',
+                    color: Colors.red.withValues(alpha: 0.8),
+                    name: '10th Percentile',
                     animationDuration: 0,
                     dashArray: const <double>[5, 5],
-                    width: 2,
+                    width: 1.5,
                   ),
                 ] else ...[
                   StackedAreaSeries<LocalWealthPoint, double>(
@@ -981,14 +993,27 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               if (_enableMonteCarlo) ...[
-                _legendDot(
-                  '90th (Lucky)',
-                  FinSpanTheme.primaryGreen.withValues(alpha: 0.5),
+                Flexible(
+                  child: _legendDot('Your Plan', const Color(0xFF6366F1)),
                 ),
-                const SizedBox(width: 16),
-                _legendDot('50th (Median)', FinSpanTheme.charcoal),
-                const SizedBox(width: 16),
-                _legendDot('10th (Unlucky)', Colors.red.withValues(alpha: 0.5)),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: _legendDot(
+                    '90th Percentile',
+                    FinSpanTheme.primaryGreen.withValues(alpha: 0.8),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: _legendDot(
+                    '10th Percentile',
+                    Colors.red.withValues(alpha: 0.8),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: _legendDot('50th Percentile', const Color(0xFFF59E0B)),
+                ),
               ] else ...[
                 _legendDot('Taxable', const Color(0xFF6B7280)),
                 const SizedBox(width: 16),
