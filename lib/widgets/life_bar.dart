@@ -32,6 +32,12 @@ class _FinSpanLifeBarState extends State<FinSpanLifeBar> {
   String? _draggingEventId;
   bool _isDraggingAge = false;
 
+  // Track initial global pan position for absolute drag (avoids delta accumulation jitter)
+  double _ageDragStartGlobalX = 0;
+  double _ageDragStartPosX = 0;
+  double _eventDragStartGlobalX = 0;
+  double _eventDragStartPosX = 0;
+
   @override
   Widget build(BuildContext context) {
     const int minAge = 18;
@@ -211,10 +217,18 @@ class _FinSpanLifeBarState extends State<FinSpanLifeBar> {
                     left: currentAgePos - 12,
                     top: 45,
                     child: GestureDetector(
-                      onPanStart: (_) => setState(() => _isDraggingAge = true),
+                      onPanStart: (details) {
+                        setState(() => _isDraggingAge = true);
+                        // Record starting touch and position for absolute tracking
+                        _ageDragStartGlobalX = details.globalPosition.dx;
+                        _ageDragStartPosX = currentAgePos;
+                      },
                       onPanUpdate: (details) {
                         if (widget.onAgeChange != null) {
-                          double newX = currentAgePos + details.delta.dx;
+                          final double newX =
+                              _ageDragStartPosX +
+                              (details.globalPosition.dx -
+                                  _ageDragStartGlobalX);
                           widget.onAgeChange!(posToAge(newX));
                         }
                       },
@@ -335,10 +349,17 @@ class _FinSpanLifeBarState extends State<FinSpanLifeBar> {
       top: yPos,
       child: GestureDetector(
         onTap: () => widget.onEventTap?.call(event),
-        onPanStart: (_) => setState(() => _draggingEventId = event.id),
+        onPanStart: (details) {
+          setState(() => _draggingEventId = event.id);
+          // Record starting touch and position for absolute tracking
+          _eventDragStartGlobalX = details.globalPosition.dx;
+          _eventDragStartPosX = startX;
+        },
         onPanUpdate: (details) {
           if (widget.onEventMove != null) {
-            double newX = startX + details.delta.dx;
+            final double newX =
+                _eventDragStartPosX +
+                (details.globalPosition.dx - _eventDragStartGlobalX);
             widget.onEventMove!(event.id, posToAge(newX));
           }
         },

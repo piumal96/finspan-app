@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
 import '../../theme/finspan_theme.dart';
@@ -31,6 +32,7 @@ class _DetailedResultsScreenState extends State<DetailedResultsScreen> {
   late int _currentAge;
   bool _isCalculated = false;
   bool _showLifeEvents = true;
+  Timer? _debounce;
 
   @override
   void initState() {
@@ -60,6 +62,12 @@ class _DetailedResultsScreenState extends State<DetailedResultsScreen> {
       ]);
     }
     _runSimulation();
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    super.dispose();
   }
 
   Future<void> _runSimulation() async {
@@ -145,10 +153,10 @@ class _DetailedResultsScreenState extends State<DetailedResultsScreen> {
 
   void _onAgeChange(int newAge) {
     if (newAge != _currentAge) {
-      setState(() {
-        _currentAge = newAge;
-      });
-      _runSimulation();
+      setState(() => _currentAge = newAge);
+      // Debounce: only actually call the API 600ms after the user stops dragging
+      _debounce?.cancel();
+      _debounce = Timer(const Duration(milliseconds: 600), _runSimulation);
     }
   }
 
@@ -168,7 +176,9 @@ class _DetailedResultsScreenState extends State<DetailedResultsScreen> {
           params: oldEvent.params,
         );
       });
-      _runSimulation();
+      // Debounce: only call API 600ms after user stops dragging the event
+      _debounce?.cancel();
+      _debounce = Timer(const Duration(milliseconds: 600), _runSimulation);
     }
   }
 
@@ -491,7 +501,7 @@ class _DetailedResultsScreenState extends State<DetailedResultsScreen> {
                   Switch(
                     value: _showLifeEvents,
                     onChanged: (val) => setState(() => _showLifeEvents = val),
-                    activeColor: FinSpanTheme.primaryGreen,
+                    activeThumbColor: FinSpanTheme.primaryGreen,
                   ),
                 ],
               ),
@@ -514,7 +524,25 @@ class _DetailedResultsScreenState extends State<DetailedResultsScreen> {
                 interval: 10,
                 majorGridLines: const MajorGridLines(width: 0),
                 labelStyle: Theme.of(context).textTheme.bodySmall,
-                plotBands: plotBands,
+                plotBands: [
+                  ...plotBands,
+                  // Current age cursor line – mirrors web WealthChart ReferenceLine
+                  PlotBand(
+                    isVisible: true,
+                    start: _currentAge.toDouble(),
+                    end: _currentAge.toDouble() + 0.5,
+                    color: FinSpanTheme.primaryGreen.withValues(alpha: 0.85),
+                    text: 'Age $_currentAge',
+                    textAngle: 0,
+                    textStyle: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    horizontalTextAlignment: TextAnchor.start,
+                    verticalTextAlignment: TextAnchor.end,
+                  ),
+                ],
               ),
               primaryYAxis: NumericAxis(
                 minimum: 0,
@@ -542,11 +570,9 @@ class _DetailedResultsScreenState extends State<DetailedResultsScreen> {
                   xValueMapper: (WealthDataPoint data, _) =>
                       data.age.toDouble(),
                   yValueMapper: (WealthDataPoint data, _) => data.taxable,
-                  color: const Color(
-                    0xFF6B7280,
-                  ).withValues(alpha: 0.7), // Gray mapped to Taxable roughly
+                  color: const Color(0xFF6B7280).withValues(alpha: 0.7),
                   name: 'Taxable',
-                  animationDuration: 1000,
+                  animationDuration: 0, // no re-animation on rebuild
                 ),
                 StackedAreaSeries<WealthDataPoint, double>(
                   dataSource: _result?.standardResults ?? [],
@@ -554,11 +580,9 @@ class _DetailedResultsScreenState extends State<DetailedResultsScreen> {
                       data.age.toDouble(),
                   yValueMapper: (WealthDataPoint data, _) =>
                       data.preTaxP1 + data.preTaxP2,
-                  color: const Color(
-                    0xFF10B981,
-                  ).withValues(alpha: 0.7), // Green mapped to Tax-Deferred
+                  color: const Color(0xFF10B981).withValues(alpha: 0.7),
                   name: 'Tax-Deferred',
-                  animationDuration: 1000,
+                  animationDuration: 0,
                 ),
                 StackedAreaSeries<WealthDataPoint, double>(
                   dataSource: _result?.standardResults ?? [],
@@ -566,11 +590,9 @@ class _DetailedResultsScreenState extends State<DetailedResultsScreen> {
                       data.age.toDouble(),
                   yValueMapper: (WealthDataPoint data, _) =>
                       data.rothP1 + data.rothP2,
-                  color: const Color(
-                    0xFFF59E0B,
-                  ).withValues(alpha: 0.7), // Orange mapped to Roth
+                  color: const Color(0xFFF59E0B).withValues(alpha: 0.7),
                   name: 'Roth',
-                  animationDuration: 1000,
+                  animationDuration: 0,
                 ),
               ],
             ),

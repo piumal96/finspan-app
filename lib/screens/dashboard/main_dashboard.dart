@@ -5,11 +5,11 @@ import '../../theme/finspan_theme.dart';
 import '../../widgets/finspan_card.dart';
 import '../../widgets/dashboard_alert_card.dart';
 import '../simulation/simulation_runner.dart';
+import '../simulation/simulator_life_weaver.dart';
 import '../accounts/accounts_breakdown.dart';
 import '../onboarding/onboarding_data.dart';
 import '../../models/simulation_models.dart';
 import '../simulation/detailed_results.dart';
-
 import '../profile/profile_screen.dart';
 
 class MainDashboardScreen extends StatefulWidget {
@@ -119,13 +119,8 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
             yearsToRetirement,
           ),
           const AccountsBreakdownScreen(),
-          DetailedResultsScreen(
-            data: widget.data ?? OnboardingData(),
-            isTab: true,
-            onRunNew: () => setState(
-              () => _selectedIndex = 0,
-            ), // Lead back to home to run new
-          ),
+          // Simulator tab — fully local, no API, real-time
+          SimulatorLifeWeaverScreen(data: widget.data),
           ProfileScreen(data: widget.data),
         ],
       ),
