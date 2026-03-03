@@ -257,324 +257,285 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
   }
 
   Widget _buildHomeMonteCarloCard() {
-    // Calculate dynamic max Y for the chart
-    double maxTotal = _homeWealthData.isEmpty
-        ? 10000000
-        : _homeWealthData.map((d) => d.total).reduce((a, b) => a > b ? a : b);
-    if (_homeEnableMonteCarlo && _homeMcResult != null) {
-      final p90Max = _homeMcResult!.p90
-          .map((d) => d.total)
-          .reduce((a, b) => a > b ? a : b);
-      if (p90Max > maxTotal) maxTotal = p90Max;
-    }
-    final dynamicMaxY = (maxTotal * 1.2).clamp(10000.0, 2000000000.0);
-
-    final age = widget.data?.currentAge ?? 30;
-    final lifeExp = widget.data?.lifeExpectancy ?? 90;
-
-    // Luck value label
-    String luckLabel = '😐 Average';
-    if (_luckSliderValue < 30) luckLabel = '😢 Unlucky';
-    if (_luckSliderValue > 70) luckLabel = '🤩 Lucky';
-
-    // Calculate selected percentile value
-    double selectedVal = 0;
-    if (_homeEnableMonteCarlo && _homeMcResult != null) {
-      if (_luckSliderValue < 50) {
-        double t = _luckSliderValue / 50.0;
-        selectedVal =
-            _homeMcResult!.p10.last.total +
-            (_homeMcResult!.median.last.total - _homeMcResult!.p10.last.total) *
-                t;
-      } else {
-        double t = (_luckSliderValue - 50.0) / 50.0;
-        selectedVal =
-            _homeMcResult!.median.last.total +
-            (_homeMcResult!.p90.last.total - _homeMcResult!.median.last.total) *
-                t;
-      }
-    }
-
     return FinSpanCard(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
         children: [
-          // Header Toggle Row
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  const Icon(
-                    Icons.analytics_rounded,
-                    color: FinSpanTheme.primaryGreen,
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: FinSpanTheme.primaryGreen.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.analytics_rounded,
+              color: FinSpanTheme.primaryGreen,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Monte Carlo Analysis',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                Text(
+                  _homeEnableMonteCarlo
+                      ? '100 simulations • ${_luckDescription(_luckSliderValue)}'
+                      : 'Test 100 market scenarios',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: _homeEnableMonteCarlo
+                        ? FinSpanTheme.primaryGreen
+                        : FinSpanTheme.bodyGray,
                   ),
-                  const SizedBox(width: 8),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                ),
+              ],
+            ),
+          ),
+          if (_homeEnableMonteCarlo && _homeMcResult != null)
+            GestureDetector(
+              onTap: _showLuckSliderSheet,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                margin: const EdgeInsets.only(right: 8),
+                decoration: BoxDecoration(
+                  color: FinSpanTheme.primaryGreen.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.tune, size: 14, color: FinSpanTheme.primaryGreen),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${_luckSliderValue.toInt()}th%',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: FinSpanTheme.primaryGreen,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          Switch(
+            value: _homeEnableMonteCarlo,
+            activeColor: FinSpanTheme.primaryGreen,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            onChanged: (val) {
+              setState(() {
+                _homeEnableMonteCarlo = val;
+                if (val && _homeMcResult == null) {
+                  final age = widget.data?.currentAge ?? 30;
+                  final lifeExp = widget.data?.lifeExpectancy ?? 90;
+                  final events = <LifeEvent>[
+                    LifeEvent(
+                      id: '1',
+                      type: LifeEventType.job,
+                      name: 'Career',
+                      startAge: age,
+                      params: const {'incomeLevel': 'good'},
+                    ),
+                    LifeEvent(
+                      id: '2',
+                      type: LifeEventType.retirement,
+                      name: 'Retirement',
+                      startAge: widget.data?.retirementAge ?? 65,
+                      params: const {'lifestyleLevel': 'moderate'},
+                    ),
+                  ];
+                  _homeMcResult = LocalWealthCalculator.calculateMonteCarlo(
+                    events, age, lifeExp,
+                  );
+                } else if (!val) {
+                  _homeMcResult = null;
+                }
+              });
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _luckDescription(double percentile) {
+    if (percentile >= 90) return '🍀 Very Lucky';
+    if (percentile >= 75) return '😊 Lucky';
+    if (percentile >= 60) return '👍 Above Average';
+    if (percentile >= 40) return '😐 Average';
+    if (percentile >= 25) return '😕 Below Average';
+    if (percentile >= 10) return '😞 Unlucky';
+    return '😰 Very Unlucky';
+  }
+
+  void _showLuckSliderSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            final mc = _homeMcResult!;
+            double selectedVal;
+            if (_luckSliderValue < 50) {
+              double t = _luckSliderValue / 50.0;
+              selectedVal = mc.p10.last.total +
+                  (mc.median.last.total - mc.p10.last.total) * t;
+            } else {
+              double t = (_luckSliderValue - 50.0) / 50.0;
+              selectedVal = mc.median.last.total +
+                  (mc.p90.last.total - mc.median.last.total) * t;
+            }
+
+            String formatMoney(double v) {
+              if (v >= 1000000) return '\$${(v / 1000000).toStringAsFixed(1)}M';
+              if (v >= 1000) return '\$${(v / 1000).round()}K';
+              return '\$${v.toStringAsFixed(0)}';
+            }
+
+            return Container(
+              decoration: const BoxDecoration(
+                color: FinSpanTheme.backgroundLight,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Handle
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text(
-                        'Monte Carlo Analysis',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
+                        'Luck Slider',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                       ),
-                      Text(
-                        _homeEnableMonteCarlo && _homeMcResult != null
-                            ? '100 simulations generated'
-                            : 'Test market volatility',
-                        style: TextStyle(
-                          color: _homeEnableMonteCarlo
-                              ? FinSpanTheme.primaryGreen
-                              : FinSpanTheme.bodyGray,
-                          fontSize: 12,
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: FinSpanTheme.primaryGreen.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Text(
+                          _luckDescription(_luckSliderValue),
+                          style: const TextStyle(
+                            color: FinSpanTheme.primaryGreen,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ],
                   ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Drag to explore different market luck scenarios',
+                    style: TextStyle(color: FinSpanTheme.bodyGray, fontSize: 13),
+                  ),
+                  const SizedBox(height: 24),
+                  SfSlider(
+                    min: 0.0,
+                    max: 100.0,
+                    value: _luckSliderValue,
+                    interval: 25,
+                    showLabels: true,
+                    enableTooltip: true,
+                    minorTicksPerInterval: 0,
+                    activeColor: FinSpanTheme.primaryGreen,
+                    onChanged: (dynamic value) {
+                      setSheetState(() => _luckSliderValue = value);
+                      setState(() => _luckSliderValue = value);
+                    },
+                  ),
+                  const SizedBox(height: 24),
+                  // Result card
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          FinSpanTheme.primaryGreen.withValues(alpha: 0.1),
+                          FinSpanTheme.primaryGreen.withValues(alpha: 0.03),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: FinSpanTheme.primaryGreen.withValues(alpha: 0.2),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'At ${_luckSliderValue.toInt()}th percentile',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: FinSpanTheme.bodyGray,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Final portfolio: ${formatMoney(selectedVal)}',
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: FinSpanTheme.charcoal,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            _badgeChip('P10: ${formatMoney(mc.p10.last.total)}', Colors.red),
+                            const SizedBox(width: 8),
+                            _badgeChip('P50: ${formatMoney(mc.median.last.total)}', const Color(0xFF8B5CF6)),
+                            const SizedBox(width: 8),
+                            _badgeChip('P90: ${formatMoney(mc.p90.last.total)}', FinSpanTheme.primaryGreen),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                 ],
               ),
-              Switch(
-                value: _homeEnableMonteCarlo,
-                activeColor: FinSpanTheme.primaryGreen,
-                onChanged: (val) {
-                  setState(() {
-                    _homeEnableMonteCarlo = val;
-                    if (val) {
-                      final events = <LifeEvent>[
-                        LifeEvent(
-                          id: '1',
-                          type: LifeEventType.job,
-                          name: 'Career',
-                          startAge: age,
-                          params: const {'incomeLevel': 'good'},
-                        ),
-                        LifeEvent(
-                          id: '2',
-                          type: LifeEventType.retirement,
-                          name: 'Retirement',
-                          startAge: widget.data?.retirementAge ?? 65,
-                          params: const {'lifestyleLevel': 'moderate'},
-                        ),
-                      ];
-                      _homeMcResult = LocalWealthCalculator.calculateMonteCarlo(
-                        events,
-                        age,
-                        lifeExp,
-                      );
-                    } else {
-                      _homeMcResult = null;
-                    }
-                  });
-                },
-              ),
-            ],
-          ),
+            );
+          },
+        );
+      },
+    );
+  }
 
-          // Chart Title
-          const SizedBox(height: 16),
-          Text(
-            _homeEnableMonteCarlo
-                ? 'Wealth Trajectory\nWith Monte Carlo overlay (100 scenarios)'
-                : 'Wealth Trajectory',
-            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-          ),
-          const SizedBox(height: 8),
-
-          // The Chart
-          SizedBox(
-            height: 220,
-            child: SfCartesianChart(
-              plotAreaBorderWidth: 0,
-              margin: EdgeInsets.zero,
-              trackballBehavior: TrackballBehavior(
-                enable: true,
-                activationMode: ActivationMode.singleTap,
-                tooltipSettings: const InteractiveTooltip(enable: true),
-              ),
-              primaryXAxis: NumericAxis(
-                minimum: age.toDouble(),
-                maximum: lifeExp.toDouble(),
-                interval: 10,
-                majorGridLines: const MajorGridLines(width: 0),
-                axisLabelFormatter: (AxisLabelRenderDetails d) {
-                  return ChartAxisLabel('Age ${d.value.toInt()}', null);
-                },
-              ),
-              primaryYAxis: NumericAxis(
-                minimum: 0,
-                maximum: dynamicMaxY,
-                interval: dynamicMaxY / 4,
-                axisLine: const AxisLine(width: 0),
-                majorTickLines: const MajorTickLines(size: 0),
-                axisLabelFormatter: (AxisLabelRenderDetails d) {
-                  final v = d.value.toDouble();
-                  if (v == 0) return ChartAxisLabel('\$0', null);
-                  if (v >= 1000000) {
-                    return ChartAxisLabel(
-                      '\$${(v / 1000000).toStringAsFixed(1)}M',
-                      null,
-                    );
-                  }
-                  return ChartAxisLabel('\$${(v / 1000).toInt()}K', null);
-                },
-              ),
-              series: <CartesianSeries>[
-                if (_homeEnableMonteCarlo && _homeMcResult != null) ...[
-                  SplineSeries<LocalWealthPoint, double>(
-                    dataSource: _homeWealthData,
-                    xValueMapper: (d, _) => d.age.toDouble(),
-                    yValueMapper: (d, _) => d.total,
-                    color: const Color(0xFF6366F1),
-                    name: 'Your Plan',
-                    animationDuration: 0,
-                    width: 3,
-                  ),
-                  SplineSeries<LocalWealthPoint, double>(
-                    dataSource: _homeMcResult!.p90,
-                    xValueMapper: (d, _) => d.age.toDouble(),
-                    yValueMapper: (d, _) => d.total,
-                    color: FinSpanTheme.primaryGreen.withValues(alpha: 0.8),
-                    name: '90th Percentile',
-                    animationDuration: 0,
-                    dashArray: const <double>[5, 5],
-                    width: 1.5,
-                  ),
-                  SplineSeries<LocalWealthPoint, double>(
-                    dataSource: _homeMcResult!.median,
-                    xValueMapper: (d, _) => d.age.toDouble(),
-                    yValueMapper: (d, _) => d.total,
-                    color: const Color(0xFFF59E0B),
-                    name: '50th Percentile',
-                    animationDuration: 0,
-                    width: 2,
-                  ),
-                  SplineSeries<LocalWealthPoint, double>(
-                    dataSource: _homeMcResult!.p10,
-                    xValueMapper: (d, _) => d.age.toDouble(),
-                    yValueMapper: (d, _) => d.total,
-                    color: Colors.red.withValues(alpha: 0.8),
-                    name: '10th Percentile',
-                    animationDuration: 0,
-                    dashArray: const <double>[5, 5],
-                    width: 1.5,
-                  ),
-                ] else ...[
-                  StackedAreaSeries<LocalWealthPoint, double>(
-                    dataSource: _homeWealthData,
-                    xValueMapper: (d, _) => d.age.toDouble(),
-                    yValueMapper: (d, _) => d.taxable,
-                    color: const Color(0xFF6B7280).withValues(alpha: 0.7),
-                    name: 'Taxable',
-                    animationDuration: 0,
-                  ),
-                  StackedAreaSeries<LocalWealthPoint, double>(
-                    dataSource: _homeWealthData,
-                    xValueMapper: (d, _) => d.age.toDouble(),
-                    yValueMapper: (d, _) => d.taxDeferred,
-                    color: const Color(0xFF10B981).withValues(alpha: 0.7),
-                    name: 'Tax-Deferred',
-                    animationDuration: 0,
-                  ),
-                  StackedAreaSeries<LocalWealthPoint, double>(
-                    dataSource: _homeWealthData,
-                    xValueMapper: (d, _) => d.age.toDouble(),
-                    yValueMapper: (d, _) => d.roth,
-                    color: const Color(0xFFF59E0B).withValues(alpha: 0.7),
-                    name: 'Roth',
-                    animationDuration: 0,
-                  ),
-                ],
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 8),
-
-          // Legend
-          Wrap(
-            spacing: 12,
-            runSpacing: 4,
-            children: _homeEnableMonteCarlo
-                ? [
-                    _mcLegendDot('Your Plan', const Color(0xFF6366F1)),
-                    _mcLegendDot(
-                      '90th Pct',
-                      FinSpanTheme.primaryGreen.withValues(alpha: 0.8),
-                    ),
-                    _mcLegendDot('10th Pct', Colors.red.withValues(alpha: 0.8)),
-                    _mcLegendDot('50th Pct', const Color(0xFFF59E0B)),
-                  ]
-                : [
-                    _mcLegendDot('Taxable', const Color(0xFF6B7280)),
-                    _mcLegendDot('Tax-Deferred', const Color(0xFF10B981)),
-                    _mcLegendDot('Roth', const Color(0xFFF59E0B)),
-                  ],
-          ),
-
-          // Luck Slider (only when MC is on)
-          if (_homeEnableMonteCarlo && _homeMcResult != null) ...[
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Luck Slider',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(luckLabel, style: const TextStyle(fontSize: 12)),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            SfSlider(
-              min: 0.0,
-              max: 100.0,
-              value: _luckSliderValue,
-              interval: 50,
-              showLabels: true,
-              enableTooltip: true,
-              minorTicksPerInterval: 0,
-              activeColor: FinSpanTheme.primaryGreen,
-              onChanged: (dynamic value) {
-                setState(() => _luckSliderValue = value);
-              },
-            ),
-            const SizedBox(height: 8),
-            Center(
-              child: RichText(
-                text: TextSpan(
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: FinSpanTheme.charcoal,
-                  ),
-                  children: [
-                    TextSpan(
-                      text: '${_luckSliderValue.toInt()}th%ile outcome: ',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    TextSpan(
-                      text: selectedVal >= 1000000
-                          ? '\$${(selectedVal / 1000000).toStringAsFixed(1)}M'
-                          : '\$${(selectedVal / 1000).round()}K',
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ],
+  Widget _badgeChip(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.bold),
       ),
     );
   }
@@ -1181,6 +1142,20 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
   }
 
   Widget _buildWealthPreview() {
+    final age = widget.data?.currentAge ?? 30;
+    final lifeExp = widget.data?.lifeExpectancy ?? 90;
+
+    double maxTotal = _homeWealthData.isEmpty
+        ? 10000000
+        : _homeWealthData.map((d) => d.total).reduce((a, b) => a > b ? a : b);
+    if (_homeEnableMonteCarlo && _homeMcResult != null) {
+      final p90Max = _homeMcResult!.p90
+          .map((d) => d.total)
+          .reduce((a, b) => a > b ? a : b);
+      if (p90Max > maxTotal) maxTotal = p90Max;
+    }
+    final dynamicMaxY = (maxTotal * 1.2).clamp(10000.0, 2000000000.0);
+
     return FinSpanCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1188,87 +1163,164 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Wealth Trajectory',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
-              TextButton(
-                onPressed: () {
-                  if (widget.data != null) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (c) =>
-                            DetailedResultsScreen(data: widget.data!),
-                      ),
-                    );
-                  }
-                },
-                child: const Text('View Full', style: TextStyle(fontSize: 12)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            height: 150,
-            child: widget.result != null
-                ? SfCartesianChart(
-                    plotAreaBorderWidth: 0,
-                    margin: EdgeInsets.zero,
-                    primaryXAxis: const NumericAxis(isVisible: false),
-                    primaryYAxis: const NumericAxis(isVisible: false),
-                    series: <CartesianSeries<WealthDataPoint, double>>[
-                      StackedAreaSeries<WealthDataPoint, double>(
-                        dataSource: widget.result!.standardResults,
-                        xValueMapper: (WealthDataPoint data, _) =>
-                            data.age.toDouble(),
-                        yValueMapper: (WealthDataPoint data, _) => data.taxable,
-                        color: const Color(0xFF6B7280).withValues(alpha: 0.7),
-                        animationDuration: 1000,
-                      ),
-                      StackedAreaSeries<WealthDataPoint, double>(
-                        dataSource: widget.result!.standardResults,
-                        xValueMapper: (WealthDataPoint data, _) =>
-                            data.age.toDouble(),
-                        yValueMapper: (WealthDataPoint data, _) =>
-                            data.preTaxP1 + data.preTaxP2,
-                        color: const Color(0xFF10B981).withValues(alpha: 0.7),
-                        animationDuration: 1000,
-                      ),
-                      StackedAreaSeries<WealthDataPoint, double>(
-                        dataSource: widget.result!.standardResults,
-                        xValueMapper: (WealthDataPoint data, _) =>
-                            data.age.toDouble(),
-                        yValueMapper: (WealthDataPoint data, _) =>
-                            data.rothP1 + data.rothP2,
-                        color: const Color(0xFFF59E0B).withValues(alpha: 0.7),
-                        animationDuration: 1000,
-                      ),
-                    ],
-                  )
-                : const Center(
-                    child: Text(
-                      "Run simulation to see projection",
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: FinSpanTheme.bodyGray,
-                      ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Wealth Trajectory',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  Text(
+                    _homeEnableMonteCarlo
+                        ? 'With Monte Carlo overlay (100 scenarios)'
+                        : 'Deterministic projection',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: FinSpanTheme.bodyGray,
                     ),
                   ),
+                ],
+              ),
+              if (_homeEnableMonteCarlo && _homeMcResult != null)
+                TextButton.icon(
+                  onPressed: _showLuckSliderSheet,
+                  icon: const Icon(Icons.tune, size: 14),
+                  label: const Text('Luck', style: TextStyle(fontSize: 12)),
+                  style: TextButton.styleFrom(
+                    foregroundColor: FinSpanTheme.primaryGreen,
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  ),
+                )
+              else
+                TextButton(
+                  onPressed: () => setState(() => _selectedIndex = 2),
+                  child: const Text('Simulator →', style: TextStyle(fontSize: 12)),
+                ),
+            ],
           ),
-          if (widget.result != null) ...[
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _buildLegendItem('Taxable', const Color(0xFF6B7280)),
-                const SizedBox(width: 16),
-                _buildLegendItem('Tax-Deferred', const Color(0xFF10B981)),
-                const SizedBox(width: 16),
-                _buildLegendItem('Roth', const Color(0xFFF59E0B)),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 200,
+            child: SfCartesianChart(
+              plotAreaBorderWidth: 0,
+              margin: EdgeInsets.zero,
+              trackballBehavior: TrackballBehavior(
+                enable: true,
+                activationMode: ActivationMode.singleTap,
+                tooltipSettings: const InteractiveTooltip(enable: true),
+              ),
+              primaryXAxis: NumericAxis(
+                minimum: age.toDouble(),
+                maximum: lifeExp.toDouble(),
+                interval: 10,
+                majorGridLines: const MajorGridLines(width: 0),
+                axisLabelFormatter: (AxisLabelRenderDetails d) {
+                  return ChartAxisLabel('Age ${d.value.toInt()}', null);
+                },
+              ),
+              primaryYAxis: NumericAxis(
+                minimum: 0,
+                maximum: dynamicMaxY,
+                interval: dynamicMaxY / 4,
+                axisLine: const AxisLine(width: 0),
+                majorTickLines: const MajorTickLines(size: 0),
+                axisLabelFormatter: (AxisLabelRenderDetails d) {
+                  final v = d.value.toDouble();
+                  if (v == 0) return ChartAxisLabel(r'$0', null);
+                  if (v >= 1000000) {
+                    return ChartAxisLabel(
+                        r'$' + '${(v / 1000000).toStringAsFixed(1)}M', null);
+                  }
+                  return ChartAxisLabel(r'$' + '${(v / 1000).toInt()}K', null);
+                },
+              ),
+              series: <CartesianSeries>[
+                if (_homeEnableMonteCarlo && _homeMcResult != null) ...[
+                  SplineSeries<LocalWealthPoint, double>(
+                    dataSource: _homeWealthData,
+                    xValueMapper: (d, _) => d.age.toDouble(),
+                    yValueMapper: (d, _) => d.total,
+                    color: const Color(0xFF6366F1),
+                    name: 'Your Plan',
+                    animationDuration: 300,
+                    width: 3,
+                  ),
+                  SplineSeries<LocalWealthPoint, double>(
+                    dataSource: _homeMcResult!.p90,
+                    xValueMapper: (d, _) => d.age.toDouble(),
+                    yValueMapper: (d, _) => d.total,
+                    color: FinSpanTheme.primaryGreen.withValues(alpha: 0.8),
+                    name: '90th Percentile (Lucky)',
+                    animationDuration: 300,
+                    dashArray: const <double>[5, 5],
+                    width: 1.5,
+                  ),
+                  SplineSeries<LocalWealthPoint, double>(
+                    dataSource: _homeMcResult!.median,
+                    xValueMapper: (d, _) => d.age.toDouble(),
+                    yValueMapper: (d, _) => d.total,
+                    color: const Color(0xFF8B5CF6),
+                    name: '50th Percentile (Median)',
+                    animationDuration: 300,
+                    width: 2,
+                  ),
+                  SplineSeries<LocalWealthPoint, double>(
+                    dataSource: _homeMcResult!.p10,
+                    xValueMapper: (d, _) => d.age.toDouble(),
+                    yValueMapper: (d, _) => d.total,
+                    color: Colors.red.withValues(alpha: 0.8),
+                    name: '10th Percentile (Unlucky)',
+                    animationDuration: 300,
+                    dashArray: const <double>[5, 5],
+                    width: 1.5,
+                  ),
+                ] else ...[
+                  StackedAreaSeries<LocalWealthPoint, double>(
+                    dataSource: _homeWealthData,
+                    xValueMapper: (d, _) => d.age.toDouble(),
+                    yValueMapper: (d, _) => d.taxable,
+                    color: const Color(0xFF6B7280).withValues(alpha: 0.6),
+                    name: 'Taxable',
+                    animationDuration: 500,
+                  ),
+                  StackedAreaSeries<LocalWealthPoint, double>(
+                    dataSource: _homeWealthData,
+                    xValueMapper: (d, _) => d.age.toDouble(),
+                    yValueMapper: (d, _) => d.taxDeferred,
+                    color: const Color(0xFF10B981).withValues(alpha: 0.6),
+                    name: 'Tax-Deferred',
+                    animationDuration: 500,
+                  ),
+                  StackedAreaSeries<LocalWealthPoint, double>(
+                    dataSource: _homeWealthData,
+                    xValueMapper: (d, _) => d.age.toDouble(),
+                    yValueMapper: (d, _) => d.roth,
+                    color: const Color(0xFFF59E0B).withValues(alpha: 0.6),
+                    name: 'Roth',
+                    animationDuration: 500,
+                  ),
+                ],
               ],
             ),
-          ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            alignment: WrapAlignment.center,
+            runSpacing: 4,
+            spacing: 12,
+            children: _homeEnableMonteCarlo
+                ? [
+                    _mcLegendDot('Your Plan', const Color(0xFF6366F1)),
+                    _mcLegendDot('90th Pct', FinSpanTheme.primaryGreen.withValues(alpha: 0.8)),
+                    _mcLegendDot('Median', const Color(0xFF8B5CF6)),
+                    _mcLegendDot('10th Pct', Colors.red.withValues(alpha: 0.8)),
+                  ]
+                : [
+                    _mcLegendDot('Taxable', const Color(0xFF6B7280)),
+                    _mcLegendDot('Tax-Deferred', const Color(0xFF10B981)),
+                    _mcLegendDot('Roth', const Color(0xFFF59E0B)),
+                  ],
+          ),
         ],
       ),
     );
