@@ -989,36 +989,19 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 12,
+            runSpacing: 4,
             children: [
               if (_enableMonteCarlo) ...[
-                Flexible(
-                  child: _legendDot('Your Plan', const Color(0xFF6366F1)),
-                ),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: _legendDot(
-                    '90th Percentile',
-                    FinSpanTheme.primaryGreen.withValues(alpha: 0.8),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: _legendDot(
-                    '10th Percentile',
-                    Colors.red.withValues(alpha: 0.8),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: _legendDot('50th Percentile', const Color(0xFFF59E0B)),
-                ),
+                _legendDot('Your Plan', const Color(0xFF6366F1)),
+                _legendDot('90th Pct', FinSpanTheme.primaryGreen.withValues(alpha: 0.8)),
+                _legendDot('10th Pct', Colors.red.withValues(alpha: 0.8)),
+                _legendDot('50th Pct', const Color(0xFFF59E0B)),
               ] else ...[
                 _legendDot('Taxable', const Color(0xFF6B7280)),
-                const SizedBox(width: 16),
                 _legendDot('Tax-Deferred', const Color(0xFF10B981)),
-                const SizedBox(width: 16),
                 _legendDot('Roth', const Color(0xFFF59E0B)),
               ],
             ],

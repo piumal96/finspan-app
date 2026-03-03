@@ -11,6 +11,7 @@ import '../onboarding/onboarding_data.dart';
 import '../../models/simulation_models.dart';
 import '../simulation/detailed_results.dart';
 import '../profile/profile_screen.dart';
+import '../../utils/local_wealth_calculator.dart';
 
 class MainDashboardScreen extends StatefulWidget {
   final SimulationResult? result;
@@ -33,10 +34,39 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
   bool _showAlert = false;
   double _luckSliderValue = 50.0;
 
+  // Home tab Local Monte Carlo
+  bool _homeEnableMonteCarlo = false;
+  LocalMonteCarloResult? _homeMcResult;
+  List<LocalWealthPoint> _homeWealthData = [];
+
   @override
   void initState() {
     super.initState();
     _showAlert = widget.fromSim && widget.result != null;
+    _initHomeWealthData();
+  }
+
+  void _initHomeWealthData() {
+    final age = widget.data?.currentAge ?? 30;
+    final lifeExp = widget.data?.lifeExpectancy ?? 90;
+    // Build a default set of events from onboarding data
+    final events = <LifeEvent>[
+      LifeEvent(
+        id: '1',
+        type: LifeEventType.job,
+        name: 'Career',
+        startAge: age,
+        params: const {'incomeLevel': 'good'},
+      ),
+      LifeEvent(
+        id: '2',
+        type: LifeEventType.retirement,
+        name: 'Retirement',
+        startAge: widget.data?.retirementAge ?? 65,
+        params: const {'lifestyleLevel': 'moderate'},
+      ),
+    ];
+    _homeWealthData = LocalWealthCalculator.calculate(events, age, lifeExp);
   }
 
   @override
@@ -191,54 +221,10 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
 
             const SizedBox(height: 24),
 
-            // 5. Monte Carlo Inline Results (Replaced with a trigger card)
-            if (widget.result?.monteCarlo != null) ...[
-              FinSpanCard(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.analytics_rounded,
-                          color: FinSpanTheme.primaryGreen,
-                        ),
-                        const SizedBox(width: 8),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Monte Carlo Analysis',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            ),
-                            Text(
-                              '${widget.result!.monteCarlo!.successRate.toStringAsFixed(1)}% Success Probability',
-                              style: const TextStyle(
-                                color: FinSpanTheme.bodyGray,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: FinSpanTheme.primaryGreen,
-                        foregroundColor: Colors.white,
-                      ),
-                      onPressed: _showMonteCarloPopup,
-                      child: const Text('View'),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-            ],
+            // 5. Monte Carlo Analysis — Inline Local (replaces old popup card)
+            _buildHomeMonteCarloCard(),
+
+            const SizedBox(height: 24),
 
             // 6. Original Quick Action
             _buildSimulationBanner(context),
@@ -246,6 +232,349 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
             const SizedBox(height: 32),
           ],
         ),
+      ),
+    );
+  }
+
+  // Helper for legend dots in the Home MC chart
+  Widget _mcLegendDot(String label, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 10, color: FinSpanTheme.bodyGray),
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHomeMonteCarloCard() {
+    // Calculate dynamic max Y for the chart
+    double maxTotal = _homeWealthData.isEmpty
+        ? 10000000
+        : _homeWealthData.map((d) => d.total).reduce((a, b) => a > b ? a : b);
+    if (_homeEnableMonteCarlo && _homeMcResult != null) {
+      final p90Max = _homeMcResult!.p90
+          .map((d) => d.total)
+          .reduce((a, b) => a > b ? a : b);
+      if (p90Max > maxTotal) maxTotal = p90Max;
+    }
+    final dynamicMaxY = (maxTotal * 1.2).clamp(10000.0, 2000000000.0);
+
+    final age = widget.data?.currentAge ?? 30;
+    final lifeExp = widget.data?.lifeExpectancy ?? 90;
+
+    // Luck value label
+    String luckLabel = '😐 Average';
+    if (_luckSliderValue < 30) luckLabel = '😢 Unlucky';
+    if (_luckSliderValue > 70) luckLabel = '🤩 Lucky';
+
+    // Calculate selected percentile value
+    double selectedVal = 0;
+    if (_homeEnableMonteCarlo && _homeMcResult != null) {
+      if (_luckSliderValue < 50) {
+        double t = _luckSliderValue / 50.0;
+        selectedVal =
+            _homeMcResult!.p10.last.total +
+            (_homeMcResult!.median.last.total - _homeMcResult!.p10.last.total) *
+                t;
+      } else {
+        double t = (_luckSliderValue - 50.0) / 50.0;
+        selectedVal =
+            _homeMcResult!.median.last.total +
+            (_homeMcResult!.p90.last.total - _homeMcResult!.median.last.total) *
+                t;
+      }
+    }
+
+    return FinSpanCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header Toggle Row
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  const Icon(
+                    Icons.analytics_rounded,
+                    color: FinSpanTheme.primaryGreen,
+                  ),
+                  const SizedBox(width: 8),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Monte Carlo Analysis',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      Text(
+                        _homeEnableMonteCarlo && _homeMcResult != null
+                            ? '100 simulations generated'
+                            : 'Test market volatility',
+                        style: TextStyle(
+                          color: _homeEnableMonteCarlo
+                              ? FinSpanTheme.primaryGreen
+                              : FinSpanTheme.bodyGray,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              Switch(
+                value: _homeEnableMonteCarlo,
+                activeColor: FinSpanTheme.primaryGreen,
+                onChanged: (val) {
+                  setState(() {
+                    _homeEnableMonteCarlo = val;
+                    if (val) {
+                      final events = <LifeEvent>[
+                        LifeEvent(
+                          id: '1',
+                          type: LifeEventType.job,
+                          name: 'Career',
+                          startAge: age,
+                          params: const {'incomeLevel': 'good'},
+                        ),
+                        LifeEvent(
+                          id: '2',
+                          type: LifeEventType.retirement,
+                          name: 'Retirement',
+                          startAge: widget.data?.retirementAge ?? 65,
+                          params: const {'lifestyleLevel': 'moderate'},
+                        ),
+                      ];
+                      _homeMcResult = LocalWealthCalculator.calculateMonteCarlo(
+                        events,
+                        age,
+                        lifeExp,
+                      );
+                    } else {
+                      _homeMcResult = null;
+                    }
+                  });
+                },
+              ),
+            ],
+          ),
+
+          // Chart Title
+          const SizedBox(height: 16),
+          Text(
+            _homeEnableMonteCarlo
+                ? 'Wealth Trajectory\nWith Monte Carlo overlay (100 scenarios)'
+                : 'Wealth Trajectory',
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+          ),
+          const SizedBox(height: 8),
+
+          // The Chart
+          SizedBox(
+            height: 220,
+            child: SfCartesianChart(
+              plotAreaBorderWidth: 0,
+              margin: EdgeInsets.zero,
+              trackballBehavior: TrackballBehavior(
+                enable: true,
+                activationMode: ActivationMode.singleTap,
+                tooltipSettings: const InteractiveTooltip(enable: true),
+              ),
+              primaryXAxis: NumericAxis(
+                minimum: age.toDouble(),
+                maximum: lifeExp.toDouble(),
+                interval: 10,
+                majorGridLines: const MajorGridLines(width: 0),
+                axisLabelFormatter: (AxisLabelRenderDetails d) {
+                  return ChartAxisLabel('Age ${d.value.toInt()}', null);
+                },
+              ),
+              primaryYAxis: NumericAxis(
+                minimum: 0,
+                maximum: dynamicMaxY,
+                interval: dynamicMaxY / 4,
+                axisLine: const AxisLine(width: 0),
+                majorTickLines: const MajorTickLines(size: 0),
+                axisLabelFormatter: (AxisLabelRenderDetails d) {
+                  final v = d.value.toDouble();
+                  if (v == 0) return ChartAxisLabel('\$0', null);
+                  if (v >= 1000000) {
+                    return ChartAxisLabel(
+                      '\$${(v / 1000000).toStringAsFixed(1)}M',
+                      null,
+                    );
+                  }
+                  return ChartAxisLabel('\$${(v / 1000).toInt()}K', null);
+                },
+              ),
+              series: <CartesianSeries>[
+                if (_homeEnableMonteCarlo && _homeMcResult != null) ...[
+                  SplineSeries<LocalWealthPoint, double>(
+                    dataSource: _homeWealthData,
+                    xValueMapper: (d, _) => d.age.toDouble(),
+                    yValueMapper: (d, _) => d.total,
+                    color: const Color(0xFF6366F1),
+                    name: 'Your Plan',
+                    animationDuration: 0,
+                    width: 3,
+                  ),
+                  SplineSeries<LocalWealthPoint, double>(
+                    dataSource: _homeMcResult!.p90,
+                    xValueMapper: (d, _) => d.age.toDouble(),
+                    yValueMapper: (d, _) => d.total,
+                    color: FinSpanTheme.primaryGreen.withValues(alpha: 0.8),
+                    name: '90th Percentile',
+                    animationDuration: 0,
+                    dashArray: const <double>[5, 5],
+                    width: 1.5,
+                  ),
+                  SplineSeries<LocalWealthPoint, double>(
+                    dataSource: _homeMcResult!.median,
+                    xValueMapper: (d, _) => d.age.toDouble(),
+                    yValueMapper: (d, _) => d.total,
+                    color: const Color(0xFFF59E0B),
+                    name: '50th Percentile',
+                    animationDuration: 0,
+                    width: 2,
+                  ),
+                  SplineSeries<LocalWealthPoint, double>(
+                    dataSource: _homeMcResult!.p10,
+                    xValueMapper: (d, _) => d.age.toDouble(),
+                    yValueMapper: (d, _) => d.total,
+                    color: Colors.red.withValues(alpha: 0.8),
+                    name: '10th Percentile',
+                    animationDuration: 0,
+                    dashArray: const <double>[5, 5],
+                    width: 1.5,
+                  ),
+                ] else ...[
+                  StackedAreaSeries<LocalWealthPoint, double>(
+                    dataSource: _homeWealthData,
+                    xValueMapper: (d, _) => d.age.toDouble(),
+                    yValueMapper: (d, _) => d.taxable,
+                    color: const Color(0xFF6B7280).withValues(alpha: 0.7),
+                    name: 'Taxable',
+                    animationDuration: 0,
+                  ),
+                  StackedAreaSeries<LocalWealthPoint, double>(
+                    dataSource: _homeWealthData,
+                    xValueMapper: (d, _) => d.age.toDouble(),
+                    yValueMapper: (d, _) => d.taxDeferred,
+                    color: const Color(0xFF10B981).withValues(alpha: 0.7),
+                    name: 'Tax-Deferred',
+                    animationDuration: 0,
+                  ),
+                  StackedAreaSeries<LocalWealthPoint, double>(
+                    dataSource: _homeWealthData,
+                    xValueMapper: (d, _) => d.age.toDouble(),
+                    yValueMapper: (d, _) => d.roth,
+                    color: const Color(0xFFF59E0B).withValues(alpha: 0.7),
+                    name: 'Roth',
+                    animationDuration: 0,
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 8),
+
+          // Legend
+          Wrap(
+            spacing: 12,
+            runSpacing: 4,
+            children: _homeEnableMonteCarlo
+                ? [
+                    _mcLegendDot('Your Plan', const Color(0xFF6366F1)),
+                    _mcLegendDot(
+                      '90th Pct',
+                      FinSpanTheme.primaryGreen.withValues(alpha: 0.8),
+                    ),
+                    _mcLegendDot('10th Pct', Colors.red.withValues(alpha: 0.8)),
+                    _mcLegendDot('50th Pct', const Color(0xFFF59E0B)),
+                  ]
+                : [
+                    _mcLegendDot('Taxable', const Color(0xFF6B7280)),
+                    _mcLegendDot('Tax-Deferred', const Color(0xFF10B981)),
+                    _mcLegendDot('Roth', const Color(0xFFF59E0B)),
+                  ],
+          ),
+
+          // Luck Slider (only when MC is on)
+          if (_homeEnableMonteCarlo && _homeMcResult != null) ...[
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Luck Slider',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(luckLabel, style: const TextStyle(fontSize: 12)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            SfSlider(
+              min: 0.0,
+              max: 100.0,
+              value: _luckSliderValue,
+              interval: 50,
+              showLabels: true,
+              enableTooltip: true,
+              minorTicksPerInterval: 0,
+              activeColor: FinSpanTheme.primaryGreen,
+              onChanged: (dynamic value) {
+                setState(() => _luckSliderValue = value);
+              },
+            ),
+            const SizedBox(height: 8),
+            Center(
+              child: RichText(
+                text: TextSpan(
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: FinSpanTheme.charcoal,
+                  ),
+                  children: [
+                    TextSpan(
+                      text: '${_luckSliderValue.toInt()}th%ile outcome: ',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    TextSpan(
+                      text: selectedVal >= 1000000
+                          ? '\$${(selectedVal / 1000000).toStringAsFixed(1)}M'
+                          : '\$${(selectedVal / 1000).round()}K',
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
