@@ -3,17 +3,16 @@ import 'package:google_fonts/google_fonts.dart';
 
 class FinSpanTheme {
   // Colors
-  static const Color primaryGreen = Color(
-    0xFF10B981,
-  ); // Professional Emerald Green
-  static const Color primaryGreenDark = Color(0xFF047857); // Deep Emerald
-  static const Color charcoal = Color(0xFF1F2937); // Softer Slate Gray for text
-  static const Color bodyGray = Color(0xFF6B7280);
+  static const Color primaryGreen = Color(0xFF00A76F); // MUI Primary Green
+  static const Color primaryGreenDark = Color(0xFF007867); // MUI Primary Dark
+  static const Color vibrantGreen = Color(0xFF22C55E); // MUI Success Green
+  static const Color charcoal = Color(0xFF212B36); // MUI Text Primary
+  static const Color bodyGray = Color(0xFF637381); // MUI Text Secondary
   static const Color backgroundLight = Color(
     0xFFF9FAFB,
-  ); // Very clean off-white
+  ); // MUI Neutral Background
   static const Color white = Colors.white;
-  static const Color dividerColor = Color(0xFFF3F4F6); // Very subtle divider
+  static const Color dividerColor = Color(0xFFDFE3E8); // MUI Divider
 
   // Constants
   static const double cardRadius = 8.0;

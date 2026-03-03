@@ -71,23 +71,72 @@ class _OnboardingStep2ScreenState extends State<OnboardingStep2Screen> {
 
                     const SizedBox(height: 16),
 
-                    // Date of Birth - Simpler Version
-                    _buildInputCard(
-                      label: "When is your birthday?",
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.calendar_today_rounded,
-                            color: FinSpanTheme.primaryGreen,
-                            size: 20,
-                          ),
-                          const SizedBox(width: 12),
-                          Text(
-                            "October 24, 1992",
-                            style: Theme.of(context).textTheme.titleMedium
-                                ?.copyWith(fontWeight: FontWeight.bold),
-                          ),
-                        ],
+                    // Date of Birth
+                    GestureDetector(
+                      onTap: () async {
+                        final DateTime? picked = await showDatePicker(
+                          context: context,
+                          initialDate:
+                              widget.data.birthDate ?? DateTime(1990, 1, 1),
+                          firstDate: DateTime(1900),
+                          lastDate: DateTime.now(),
+                          builder: (context, child) {
+                            return Theme(
+                              data: Theme.of(context).copyWith(
+                                colorScheme: ColorScheme.light(
+                                  primary: FinSpanTheme.primaryGreen,
+                                  onPrimary: Colors.white,
+                                  onSurface: FinSpanTheme.charcoal,
+                                ),
+                              ),
+                              child: child!,
+                            );
+                          },
+                        );
+                        if (picked != null) {
+                          setState(() {
+                            widget.data.birthDate = picked;
+                            widget.data.updateAgeFromBirthDate();
+                          });
+                        }
+                      },
+                      child: _buildInputCard(
+                        label: "When is your birthday?",
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.calendar_today_rounded,
+                              color: FinSpanTheme.primaryGreen,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              widget.data.birthDate != null
+                                  ? "${_monthName(widget.data.birthDate!.month)} ${widget.data.birthDate!.day}, ${widget.data.birthDate!.year}"
+                                  : "Select your birthday",
+                              style: Theme.of(context).textTheme.titleMedium
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: widget.data.birthDate != null
+                                        ? FinSpanTheme.charcoal
+                                        : Colors.grey,
+                                  ),
+                            ),
+                            const Spacer(),
+                            if (widget.data.birthDate != null)
+                              Chip(
+                                label: Text("${widget.data.currentAge} yrs"),
+                                backgroundColor: FinSpanTheme.primaryGreen
+                                    .withOpacity(0.1),
+                                labelStyle: TextStyle(
+                                  color: FinSpanTheme.primaryGreen,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                ),
+                                padding: EdgeInsets.zero,
+                              ),
+                          ],
+                        ),
                       ),
                     ),
 
@@ -136,6 +185,24 @@ class _OnboardingStep2ScreenState extends State<OnboardingStep2Screen> {
         ),
       ),
     );
+  }
+
+  String _monthName(int month) {
+    const months = [
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
+    ];
+    return months[month - 1];
   }
 
   Widget _buildInputCard({required String label, required Widget child}) {

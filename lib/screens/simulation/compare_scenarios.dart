@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:fl_chart/fl_chart.dart';
+import 'package:syncfusion_flutter_charts/charts.dart';
 import '../../theme/finspan_theme.dart';
 import '../../widgets/finspan_card.dart';
 
@@ -53,111 +53,63 @@ class CompareScenariosScreen extends StatelessWidget {
                   children: [
                     SizedBox(
                       height: 220,
-                      child: LineChart(
-                        LineChartData(
-                          gridData: FlGridData(
-                            show: true,
-                            drawVerticalLine: false,
-                            horizontalInterval: 50,
-                            getDrawingHorizontalLine: (value) {
-                              return FlLine(
-                                color: FinSpanTheme.dividerColor,
-                                strokeWidth: 1,
-                              );
-                            },
-                          ),
-                          titlesData: FlTitlesData(
-                            show: true,
-                            rightTitles: const AxisTitles(
-                              sideTitles: SideTitles(showTitles: false),
-                            ),
-                            topTitles: const AxisTitles(
-                              sideTitles: SideTitles(showTitles: false),
-                            ),
-                            bottomTitles: AxisTitles(
-                              sideTitles: SideTitles(
-                                showTitles: true,
-                                reservedSize: 30,
-                                interval: 10,
-                                getTitlesWidget: (value, meta) {
-                                  if (value % 10 == 0 &&
-                                      value >= 40 &&
-                                      value <= 90) {
-                                    return Padding(
-                                      padding: const EdgeInsets.only(top: 8.0),
-                                      child: Text(
-                                        '${value.toInt()}',
-                                        style: Theme.of(
-                                          context,
-                                        ).textTheme.bodySmall,
-                                      ),
-                                    );
-                                  }
-                                  return const SizedBox.shrink();
-                                },
-                              ),
-                            ),
-                            leftTitles: AxisTitles(
-                              sideTitles: SideTitles(
-                                showTitles: true,
-                                interval: 50,
-                                reservedSize: 42,
-                                getTitlesWidget: (value, meta) {
-                                  if (value == 0)
-                                    return const SizedBox.shrink();
-                                  return Text(
-                                    '${value.toInt()}M',
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.bodySmall,
-                                  );
-                                },
-                              ),
-                            ),
-                          ),
-                          borderData: FlBorderData(show: false),
-                          minX: 40,
-                          maxX: 90,
-                          minY: 0,
-                          maxY: 150,
-                          lineBarsData: [
-                            // Current Plan (Gray)
-                            LineChartBarData(
-                              spots: const [
-                                FlSpot(40, 45),
-                                FlSpot(50, 60),
-                                FlSpot(65, 90),
-                                FlSpot(75, 110),
-                                FlSpot(85, 80),
-                                FlSpot(90, 40),
-                              ],
-                              isCurved: true,
-                              color: FinSpanTheme.bodyGray.withValues(
-                                alpha: 0.5,
-                              ),
-                              barWidth: 3,
-                              isStrokeCapRound: true,
-                              dotData: const FlDotData(show: false),
-                              dashArray: [5, 5],
-                            ),
-                            // Proposed Scenario (Green)
-                            LineChartBarData(
-                              spots: const [
-                                FlSpot(40, 45),
-                                FlSpot(50, 65),
-                                FlSpot(65, 110),
-                                FlSpot(75, 140),
-                                FlSpot(85, 120),
-                                FlSpot(90, 100),
-                              ],
-                              isCurved: true,
-                              color: FinSpanTheme.primaryGreen,
-                              barWidth: 3,
-                              isStrokeCapRound: true,
-                              dotData: const FlDotData(show: false),
-                            ),
-                          ],
+                      child: SfCartesianChart(
+                        plotAreaBorderWidth: 0,
+                        margin: EdgeInsets.zero,
+                        primaryXAxis: NumericAxis(
+                          minimum: 40,
+                          maximum: 90,
+                          interval: 10,
+                          majorGridLines: const MajorGridLines(width: 0),
+                          labelStyle: Theme.of(context).textTheme.bodySmall,
                         ),
+                        primaryYAxis: NumericAxis(
+                          minimum: 0,
+                          maximum: 150,
+                          interval: 50,
+                          axisLine: const AxisLine(width: 0),
+                          majorTickLines: const MajorTickLines(size: 0),
+                          labelStyle: Theme.of(context).textTheme.bodySmall,
+                          axisLabelFormatter: (AxisLabelRenderDetails details) {
+                            return ChartAxisLabel(
+                              '${details.value.toInt()}M',
+                              null,
+                            );
+                          },
+                        ),
+                        series: <CartesianSeries<_ChartData, double>>[
+                          // Current Plan (Gray)
+                          SplineSeries<_ChartData, double>(
+                            dataSource: const [
+                              _ChartData(40, 45),
+                              _ChartData(50, 60),
+                              _ChartData(65, 90),
+                              _ChartData(75, 110),
+                              _ChartData(85, 80),
+                              _ChartData(90, 40),
+                            ],
+                            xValueMapper: (_ChartData data, _) => data.x,
+                            yValueMapper: (_ChartData data, _) => data.y,
+                            color: FinSpanTheme.bodyGray.withOpacity(0.5),
+                            width: 3,
+                            dashArray: const <double>[5, 5],
+                          ),
+                          // Proposed Scenario (Green)
+                          SplineSeries<_ChartData, double>(
+                            dataSource: const [
+                              _ChartData(40, 45),
+                              _ChartData(50, 65),
+                              _ChartData(65, 110),
+                              _ChartData(75, 140),
+                              _ChartData(85, 120),
+                              _ChartData(90, 100),
+                            ],
+                            xValueMapper: (_ChartData data, _) => data.x,
+                            yValueMapper: (_ChartData data, _) => data.y,
+                            color: FinSpanTheme.primaryGreen,
+                            width: 3,
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -295,4 +247,10 @@ class CompareScenariosScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ChartData {
+  const _ChartData(this.x, this.y);
+  final double x;
+  final double y;
 }

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:fl_chart/fl_chart.dart';
+import 'package:syncfusion_flutter_charts/charts.dart';
 import '../../theme/finspan_theme.dart';
 import '../../widgets/finspan_card.dart';
 
@@ -48,46 +48,49 @@ class AccountsBreakdownScreen extends StatelessWidget {
                       child: Stack(
                         alignment: Alignment.center,
                         children: [
-                          PieChart(
-                            PieChartData(
-                              sectionsSpace: 2,
-                              centerSpaceRadius: 60,
-                              sections: [
-                                PieChartSectionData(
-                                  color: FinSpanTheme.primaryGreen,
-                                  value: 55,
-                                  title: '55%',
-                                  radius: 20,
-                                  titleStyle: const TextStyle(
+                          SfCircularChart(
+                            margin: EdgeInsets.zero,
+                            series: <CircularSeries<_AssetData, String>>[
+                              DoughnutSeries<_AssetData, String>(
+                                dataSource: [
+                                  _AssetData(
+                                    'Investments',
+                                    55,
+                                    FinSpanTheme.primaryGreen,
+                                    '55%',
+                                  ),
+                                  _AssetData(
+                                    'Cash',
+                                    30,
+                                    FinSpanTheme.primaryGreenDark,
+                                    '30%',
+                                  ),
+                                  _AssetData(
+                                    'EPF/ETF',
+                                    15,
+                                    FinSpanTheme.charcoal,
+                                    '15%',
+                                  ),
+                                ],
+                                xValueMapper: (_AssetData data, _) => data.x,
+                                yValueMapper: (_AssetData data, _) => data.y,
+                                pointColorMapper: (_AssetData data, _) =>
+                                    data.color,
+                                dataLabelMapper: (_AssetData data, _) =>
+                                    data.label,
+                                dataLabelSettings: const DataLabelSettings(
+                                  isVisible: true,
+                                  labelPosition: ChartDataLabelPosition.inside,
+                                  textStyle: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.bold,
                                     color: Colors.white,
                                   ),
                                 ),
-                                PieChartSectionData(
-                                  color: FinSpanTheme.primaryGreenDark,
-                                  value: 30,
-                                  title: '30%',
-                                  radius: 20,
-                                  titleStyle: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                                PieChartSectionData(
-                                  color: FinSpanTheme.charcoal,
-                                  value: 15,
-                                  title: '15%',
-                                  radius: 20,
-                                  titleStyle: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ],
-                            ),
+                                innerRadius: '75%',
+                                radius: '100%',
+                              ),
+                            ],
                           ),
                           Column(
                             mainAxisSize: MainAxisSize.min,
@@ -273,4 +276,12 @@ class AccountsBreakdownScreen extends StatelessWidget {
       trailing: Text(balance, style: Theme.of(context).textTheme.titleMedium),
     );
   }
+}
+
+class _AssetData {
+  _AssetData(this.x, this.y, this.color, this.label);
+  final String x;
+  final double y;
+  final Color color;
+  final String label;
 }

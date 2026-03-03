@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:fl_chart/fl_chart.dart';
+import 'package:syncfusion_flutter_charts/charts.dart';
 import '../../theme/finspan_theme.dart';
 import '../../widgets/finspan_card.dart';
 
@@ -64,129 +64,78 @@ class _WhatIfAnalysisScreenState extends State<WhatIfAnalysisScreen> {
                       ),
                       const SizedBox(height: 24),
                       Expanded(
-                        child: LineChart(
-                          LineChartData(
-                            gridData: FlGridData(
-                              show: true,
-                              drawVerticalLine: false,
-                              horizontalInterval: 50,
-                              getDrawingHorizontalLine: (value) {
-                                return FlLine(
-                                  color: FinSpanTheme.dividerColor,
-                                  strokeWidth: 1,
-                                );
-                              },
-                            ),
-                            titlesData: FlTitlesData(
-                              show: true,
-                              rightTitles: const AxisTitles(
-                                sideTitles: SideTitles(showTitles: false),
-                              ),
-                              topTitles: const AxisTitles(
-                                sideTitles: SideTitles(showTitles: false),
-                              ),
-                              bottomTitles: AxisTitles(
-                                sideTitles: SideTitles(
-                                  showTitles: true,
-                                  reservedSize: 30,
-                                  interval: 10,
-                                  getTitlesWidget: (value, meta) {
-                                    if (value % 10 == 0 &&
-                                        value >= 40 &&
-                                        value <= 90) {
-                                      return Padding(
-                                        padding: const EdgeInsets.only(
-                                          top: 8.0,
-                                        ),
-                                        child: Text(
-                                          '${value.toInt()}',
-                                          style: Theme.of(
-                                            context,
-                                          ).textTheme.bodySmall,
-                                        ),
-                                      );
-                                    }
-                                    return const SizedBox.shrink();
-                                  },
-                                ),
-                              ),
-                              leftTitles: AxisTitles(
-                                sideTitles: SideTitles(
-                                  showTitles: true,
-                                  interval: 50,
-                                  reservedSize: 42,
-                                  getTitlesWidget: (value, meta) {
-                                    if (value == 0)
-                                      return const SizedBox.shrink();
-                                    return Text(
-                                      '${value.toInt()}M',
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.bodySmall,
-                                    );
-                                  },
-                                ),
-                              ),
-                            ),
-                            borderData: FlBorderData(show: false),
-                            minX: 40,
-                            maxX: 90,
-                            minY: 0,
-                            maxY: 150,
-                            extraLinesData: ExtraLinesData(
-                              horizontalLines: [
-                                HorizontalLine(
-                                  y: 40,
-                                  color: FinSpanTheme.charcoal.withValues(
-                                    alpha: 0.5,
-                                  ),
-                                  strokeWidth: 1,
-                                  dashArray: [5, 5],
-                                  label: HorizontalLineLabel(
-                                    show: true,
-                                    alignment: Alignment.topRight,
-                                    padding: const EdgeInsets.only(
-                                      right: 5,
-                                      bottom: 5,
-                                    ),
-                                    style: const TextStyle(
-                                      fontSize: 10,
-                                      color: FinSpanTheme.charcoal,
-                                    ),
-                                    labelResolver: (line) => 'Target Wealth',
-                                  ),
-                                ),
-                              ],
-                            ),
-                            lineBarsData: [
-                              LineChartBarData(
-                                // Very basic simulated curve that reacts slightly to the sliders
-                                spots: [
-                                  const FlSpot(40, 45),
-                                  const FlSpot(50, 60),
-                                  FlSpot(
-                                    _retireAge,
-                                    100 + (_monthlySavings * 0.1),
-                                  ),
-                                  const FlSpot(70, 110),
-                                  const FlSpot(80, 70),
-                                  FlSpot(
-                                    87,
-                                    0 +
-                                        (_postRetirementSpending > 250
-                                            ? -20
-                                            : 0),
-                                  ), // Depletes faster with higher spending
-                                  const FlSpot(90, 0),
-                                ],
-                                isCurved: true,
-                                color: FinSpanTheme.primaryGreen,
-                                barWidth: 3,
-                                isStrokeCapRound: true,
-                                dotData: const FlDotData(show: false),
-                              ),
-                            ],
+                        child: SfCartesianChart(
+                          plotAreaBorderWidth: 0,
+                          margin: EdgeInsets.zero,
+                          primaryXAxis: NumericAxis(
+                            minimum: 40,
+                            maximum: 90,
+                            interval: 10,
+                            majorGridLines: const MajorGridLines(width: 0),
+                            labelStyle: Theme.of(context).textTheme.bodySmall,
                           ),
+                          primaryYAxis: NumericAxis(
+                            minimum: 0,
+                            maximum: 150,
+                            interval: 50,
+                            axisLine: const AxisLine(width: 0),
+                            majorTickLines: const MajorTickLines(size: 0),
+                            labelStyle: Theme.of(context).textTheme.bodySmall,
+                            axisLabelFormatter:
+                                (AxisLabelRenderDetails details) {
+                                  return ChartAxisLabel(
+                                    '${details.value.toInt()}M',
+                                    null,
+                                  );
+                                },
+                          ),
+                          annotations: <CartesianChartAnnotation>[
+                            CartesianChartAnnotation(
+                              widget: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: FinSpanTheme.charcoal.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text(
+                                  'Target Wealth',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: FinSpanTheme.charcoal,
+                                  ),
+                                ),
+                              ),
+                              coordinateUnit: CoordinateUnit.point,
+                              x: 80,
+                              y: 45,
+                            ),
+                          ],
+                          series: <CartesianSeries<_ChartData, double>>[
+                            SplineSeries<_ChartData, double>(
+                              dataSource: [
+                                _ChartData(40, 45),
+                                _ChartData(50, 60),
+                                _ChartData(
+                                  _retireAge,
+                                  100 + (_monthlySavings * 0.1),
+                                ),
+                                _ChartData(70, 110),
+                                _ChartData(80, 70),
+                                _ChartData(
+                                  87,
+                                  _postRetirementSpending > 250 ? -20 : 0,
+                                ),
+                                _ChartData(90, 0),
+                              ],
+                              xValueMapper: (_ChartData data, _) => data.x,
+                              yValueMapper: (_ChartData data, _) => data.y,
+                              color: FinSpanTheme.primaryGreen,
+                              width: 3,
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -332,4 +281,10 @@ class _WhatIfAnalysisScreenState extends State<WhatIfAnalysisScreen> {
       ),
     );
   }
+}
+
+class _ChartData {
+  _ChartData(this.x, this.y);
+  final double x;
+  final double y;
 }

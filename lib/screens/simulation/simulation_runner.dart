@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../theme/finspan_theme.dart';
 import '../onboarding/onboarding_data.dart';
 import 'detailed_results.dart';
+import '../../services/user_service.dart';
 import 'dart:async';
 
 class SimulationRunnerScreen extends StatefulWidget {
@@ -16,6 +17,7 @@ class _SimulationRunnerScreenState extends State<SimulationRunnerScreen>
     with TickerProviderStateMixin {
   late AnimationController _progressController;
   late AnimationController _pulseController;
+  final UserService _userService = UserService();
 
   int _currentStepIndex = 0;
   final List<String> _steps = [
@@ -29,6 +31,12 @@ class _SimulationRunnerScreenState extends State<SimulationRunnerScreen>
   @override
   void initState() {
     super.initState();
+
+    // Save profile to Firestore in background
+    _userService.saveUserProfile(widget.data).catchError((e) {
+      print("Failed to save profile: $e");
+    });
+
     _progressController =
         AnimationController(vsync: this, duration: const Duration(seconds: 6))
           ..forward().then((_) {

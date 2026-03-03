@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:fl_chart/fl_chart.dart';
+import 'package:syncfusion_flutter_charts/charts.dart';
 import '../../theme/finspan_theme.dart';
 import '../../widgets/finspan_card.dart';
 import '../onboarding/onboarding_data.dart';
@@ -10,18 +10,27 @@ import '../dashboard/main_dashboard.dart';
 
 class DetailedResultsScreen extends StatefulWidget {
   final OnboardingData data;
-  const DetailedResultsScreen({super.key, required this.data});
+  final bool isTab;
+  final VoidCallback? onRunNew;
+
+  const DetailedResultsScreen({
+    super.key,
+    required this.data,
+    this.isTab = false,
+    this.onRunNew,
+  });
 
   @override
   State<DetailedResultsScreen> createState() => _DetailedResultsScreenState();
 }
 
 class _DetailedResultsScreenState extends State<DetailedResultsScreen> {
-  late SimulationResult _result;
+  SimulationResult? _result;
   final SimulationService _simService = SimulationService();
   late List<LifeEvent> _displayEvents;
   late int _currentAge;
   bool _isCalculated = false;
+  bool _showLifeEvents = true;
 
   @override
   void initState() {
@@ -53,16 +62,85 @@ class _DetailedResultsScreenState extends State<DetailedResultsScreen> {
     _runSimulation();
   }
 
-  void _runSimulation() {
-    setState(() {
-      // Create a temporary data object with updated current age and events for simulation
-      final tempData = widget.data.copyWith(
-        currentAge: _currentAge,
-        lifeEvents: _displayEvents,
-      );
-      _result = _simService.runSimulation(tempData);
-      _isCalculated = true;
-    });
+  Future<void> _runSimulation() async {
+    setState(() => _isCalculated = false);
+
+    final params = RetirementSimulationParams(
+      p1StartAge: _currentAge,
+      p2StartAge: widget.data.includePartner
+          ? (widget.data.spouseAge ?? widget.data.currentAge)
+          : widget.data.currentAge, // Backend needs non-zero age
+      endSimulationAge: widget.data.lifeExpectancy,
+      inflationRate: widget.data.generalInflation / 100,
+      annualSpendGoal: widget.data.annualSpendingGoal,
+      filingStatus: widget.data.taxFilingStatus == 'single' ? 'Single' : 'MFJ',
+      p1EmploymentIncome: widget.data.annualSalary,
+      p1EmploymentUntilAge: widget.data.retirementAge,
+      p2EmploymentIncome: widget.data.includePartner
+          ? widget.data.spouseSalary
+          : 0,
+      p2EmploymentUntilAge: widget.data.includePartner
+          ? (widget.data.spouseRetirementAge ?? widget.data.retirementAge)
+          : widget.data.retirementAge, // Match web app logic
+      p1SsAmount: widget.data.socialSecurityBenefit, // Monthly, no *12
+      p1SsStartAge: widget.data.socialSecurityAge,
+      p2SsAmount: widget.data.includePartner
+          ? widget
+                .data
+                .spouseSocialSecurityBenefit // Monthly, no *12
+          : 0,
+      p2SsStartAge: widget.data.includePartner
+          ? widget.data.spouseSocialSecurityAge
+          : 67, // Default from web app
+      p1Pension: widget.data.pensionIncome,
+      p1PensionStartAge: 65, // Web app default
+      p2Pension: 0,
+      p2PensionStartAge: 65,
+      balTaxable:
+          widget.data.taxableSavings +
+          (widget.data.includePartner ? widget.data.spouseTaxableSavings : 0),
+      balPretaxP1: widget.data.taxDeferredSavings,
+      balPretaxP2: widget.data.includePartner
+          ? widget.data.spouseTaxDeferredSavings
+          : 0,
+      balRothP1: widget.data.taxFreeSavings,
+      balRothP2: widget.data.includePartner
+          ? widget.data.spouseTaxFreeSavings
+          : 0,
+      growthRateTaxable: widget.data.expectedReturn / 100,
+      growthRatePretaxP1: widget.data.expectedReturn / 100,
+      growthRatePretaxP2: widget.data.expectedReturn / 100,
+      growthRateRothP1: widget.data.expectedReturn / 100,
+      growthRateRothP2: widget.data.expectedReturn / 100,
+      taxableBasisRatio: 0.8, // Match web app
+      targetTaxBracketRate:
+          (double.tryParse(widget.data.taxTargetBracket.replaceAll('%', '')) ??
+              22.0) /
+          100,
+      rental1Income: widget.data.rentalIncome, // Monthly, match web app
+    );
+
+    try {
+      final result = await _simService.runSimulation(params);
+
+      if (mounted) {
+        setState(() {
+          if (result != null) {
+            _result = result;
+          }
+          _isCalculated = true;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Simulation Error: $e')));
+        setState(
+          () => _isCalculated = true,
+        ); // Allow showing last result or empty state
+      }
+    }
   }
 
   void _onAgeChange(int newAge) {
@@ -209,7 +287,8 @@ class _DetailedResultsScreenState extends State<DetailedResultsScreen> {
     }
 
     double maxWealth = 0;
-    for (var year in _result.years) {
+    final results = _result?.standardResults ?? [];
+    for (var year in results) {
       if (year.total > maxWealth) maxWealth = year.total;
     }
     double dynamicMaxY = (maxWealth * 1.2)
@@ -236,46 +315,96 @@ class _DetailedResultsScreenState extends State<DetailedResultsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildWealthChart(context, dynamicMaxY),
-              const SizedBox(height: 24),
-              FinSpanCard(
-                child: FinSpanLifeBar(
-                  currentAge: _currentAge,
-                  retirementAge: widget.data.retirementAge,
-                  lifeExpectancy: widget.data.lifeExpectancy,
-                  events: _displayEvents,
-                  onAddEvent: _onAddEvent,
-                  onEventTap: _onEventTap,
-                  onEventMove: _onEventMove,
-                  onAgeChange: _onAgeChange,
+              if (!_isCalculated)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 40),
+                    child: CircularProgressIndicator(),
+                  ),
+                )
+              else if (_result == null)
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 40),
+                    child: Column(
+                      children: [
+                        const Icon(
+                          Icons.error_outline,
+                          size: 48,
+                          color: Colors.red,
+                        ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Failed to calculate your results.',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Please check your connection and try again.',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: _runSimulation,
+                          child: const Text('Retry Calculation'),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else ...[
+                _buildWealthChart(context, dynamicMaxY),
+                const SizedBox(height: 24),
+                FinSpanCard(
+                  child: FinSpanLifeBar(
+                    currentAge: _currentAge,
+                    retirementAge: widget.data.retirementAge,
+                    lifeExpectancy: widget.data.lifeExpectancy,
+                    events: _displayEvents,
+                    onAddEvent: _onAddEvent,
+                    onEventTap: _onEventTap,
+                    onEventMove: _onEventMove,
+                    onAgeChange: _onAgeChange,
+                  ),
                 ),
-              ),
+              ],
               const SizedBox(height: 24),
               _buildKeyTakeaways(context),
               const SizedBox(height: 32),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    // Redirect to dashboard with results, clearing the stack
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => MainDashboardScreen(
-                          result: _result,
-                          data: widget.data.copyWith(
-                            lifeEvents: _displayEvents,
-                            currentAge: _currentAge,
-                          ),
-                          fromSim: true,
-                        ),
-                      ),
-                      (route) => false,
-                    );
-                  },
-                  child: const Text('Return to Dashboard'),
+              if (!widget.isTab)
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _result == null
+                        ? null
+                        : () {
+                            // Redirect to dashboard with results, clearing the stack
+                            Navigator.pushAndRemoveUntil(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => MainDashboardScreen(
+                                  result: _result,
+                                  data: widget.data.copyWith(
+                                    lifeEvents: _displayEvents,
+                                    currentAge: _currentAge,
+                                  ),
+                                  fromSim: true,
+                                ),
+                              ),
+                              (route) => false,
+                            );
+                          },
+                    child: const Text('Return to Dashboard'),
+                  ),
                 ),
-              ),
+              if (widget.isTab && _result == null && _isCalculated)
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: widget.onRunNew,
+                    child: const Text('Run New Simulation'),
+                  ),
+                ),
             ],
           ),
         ),
@@ -284,6 +413,42 @@ class _DetailedResultsScreenState extends State<DetailedResultsScreen> {
   }
 
   Widget _buildWealthChart(BuildContext context, double dynamicMaxY) {
+    List<PlotBand> plotBands = [];
+    if (_showLifeEvents) {
+      for (var event in _displayEvents) {
+        Color bandColor;
+        switch (event.type) {
+          case LifeEventType.retirement:
+            bandColor = Colors.purple.withValues(alpha: 0.2);
+            break;
+          case LifeEventType.rent:
+          case LifeEventType.home:
+            bandColor = Colors.blue.withValues(alpha: 0.2);
+            break;
+          default:
+            bandColor = FinSpanTheme.primaryGreen.withValues(alpha: 0.1);
+        }
+
+        plotBands.add(
+          PlotBand(
+            isVisible: true,
+            start: event.startAge,
+            end: event.endAge ?? event.startAge + 1, // small band if no end age
+            color: bandColor,
+            text: event.name,
+            textAngle: 270,
+            textStyle: const TextStyle(
+              color: FinSpanTheme.charcoal,
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+            ),
+            horizontalTextAlignment: TextAnchor.start,
+            verticalTextAlignment: TextAnchor.middle,
+          ),
+        );
+      }
+    }
+
     return FinSpanCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -297,134 +462,172 @@ class _DetailedResultsScreenState extends State<DetailedResultsScreen> {
                   context,
                 ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
               ),
-              const Icon(
-                Icons.info_outline,
-                size: 16,
-                color: FinSpanTheme.bodyGray,
+              Row(
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        'Life Events Overlay',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: _showLifeEvents
+                              ? FinSpanTheme.primaryGreen
+                              : FinSpanTheme.bodyGray,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      if (_showLifeEvents)
+                        Text(
+                          '(${_displayEvents.length} events)',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: FinSpanTheme.primaryGreen,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                    ],
+                  ),
+                  Switch(
+                    value: _showLifeEvents,
+                    onChanged: (val) => setState(() => _showLifeEvents = val),
+                    activeColor: FinSpanTheme.primaryGreen,
+                  ),
+                ],
               ),
             ],
           ),
           const SizedBox(height: 24),
           SizedBox(
-            height: 220,
-            child: LineChart(
-              LineChartData(
-                lineTouchData: LineTouchData(
-                  touchTooltipData: LineTouchTooltipData(
-                    getTooltipColor: (spot) =>
-                        FinSpanTheme.charcoal.withValues(alpha: 0.9),
-                    getTooltipItems: (List<LineBarSpot> touchedSpots) {
-                      return touchedSpots.map((spot) {
-                        return LineTooltipItem(
-                          'Age ${spot.x.toInt()}\nLKR ${(spot.y / 1000000).toStringAsFixed(2)}M',
-                          const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
-                        );
-                      }).toList();
-                    },
-                  ),
-                ),
-                gridData: FlGridData(
-                  show: true,
-                  drawVerticalLine: false,
-                  horizontalInterval: dynamicMaxY / 5,
-                  getDrawingHorizontalLine: (value) =>
-                      FlLine(color: FinSpanTheme.dividerColor, strokeWidth: 1),
-                ),
-                titlesData: FlTitlesData(
-                  show: true,
-                  rightTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  topTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 30,
-                      interval: 10,
-                      getTitlesWidget: (value, meta) {
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 8.0),
-                          child: Text(
-                            '${value.toInt()}',
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 45,
-                      getTitlesWidget: (value, meta) {
-                        if (value == 0) return const SizedBox.shrink();
-                        if (value >= 1000000)
-                          return Text(
-                            '${(value / 1000000).toInt()}M',
-                            style: Theme.of(context).textTheme.bodySmall,
-                          );
-                        return Text(
-                          '${(value / 1000).toInt()}K',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        );
-                      },
-                    ),
-                  ),
-                ),
-                borderData: FlBorderData(show: false),
-                minX: _currentAge.toDouble(),
-                maxX: widget.data.lifeExpectancy.toDouble(),
-                minY: 0,
-                maxY: dynamicMaxY,
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: _result.years
-                        .map((y) => FlSpot(y.age.toDouble(), y.total))
-                        .toList(),
-                    isCurved: true,
-                    color: FinSpanTheme.primaryGreen,
-                    barWidth: 4,
-                    isStrokeCapRound: true,
-                    dotData: const FlDotData(show: false),
-                    belowBarData: BarAreaData(
-                      show: true,
-                      color: FinSpanTheme.primaryGreen.withValues(alpha: 0.1),
-                    ),
-                  ),
-                ],
+            height: 250,
+            child: SfCartesianChart(
+              plotAreaBorderWidth: 0,
+              margin: EdgeInsets.zero,
+              trackballBehavior: TrackballBehavior(
+                enable: true,
+                activationMode: ActivationMode.singleTap,
+                tooltipSettings: const InteractiveTooltip(enable: true),
               ),
+              primaryXAxis: NumericAxis(
+                minimum: _currentAge.toDouble(),
+                maximum: widget.data.lifeExpectancy.toDouble(),
+                interval: 10,
+                majorGridLines: const MajorGridLines(width: 0),
+                labelStyle: Theme.of(context).textTheme.bodySmall,
+                plotBands: plotBands,
+              ),
+              primaryYAxis: NumericAxis(
+                minimum: 0,
+                maximum: dynamicMaxY,
+                interval: dynamicMaxY / 5,
+                axisLine: const AxisLine(width: 0),
+                majorTickLines: const MajorTickLines(size: 0),
+                labelStyle: Theme.of(context).textTheme.bodySmall,
+                numberFormat: null,
+                axisLabelFormatter: (AxisLabelRenderDetails details) {
+                  double val = details.value.toDouble();
+                  if (val == 0) return ChartAxisLabel('\$0', null);
+                  if (val >= 1000000) {
+                    return ChartAxisLabel(
+                      '\$${(val / 1000000).toStringAsFixed(1)}M',
+                      null,
+                    );
+                  }
+                  return ChartAxisLabel('\$${(val / 1000).toInt()}K', null);
+                },
+              ),
+              series: <CartesianSeries>[
+                StackedAreaSeries<WealthDataPoint, double>(
+                  dataSource: _result?.standardResults ?? [],
+                  xValueMapper: (WealthDataPoint data, _) =>
+                      data.age.toDouble(),
+                  yValueMapper: (WealthDataPoint data, _) => data.taxable,
+                  color: const Color(
+                    0xFF6B7280,
+                  ).withValues(alpha: 0.7), // Gray mapped to Taxable roughly
+                  name: 'Taxable',
+                  animationDuration: 1000,
+                ),
+                StackedAreaSeries<WealthDataPoint, double>(
+                  dataSource: _result?.standardResults ?? [],
+                  xValueMapper: (WealthDataPoint data, _) =>
+                      data.age.toDouble(),
+                  yValueMapper: (WealthDataPoint data, _) =>
+                      data.preTaxP1 + data.preTaxP2,
+                  color: const Color(
+                    0xFF10B981,
+                  ).withValues(alpha: 0.7), // Green mapped to Tax-Deferred
+                  name: 'Tax-Deferred',
+                  animationDuration: 1000,
+                ),
+                StackedAreaSeries<WealthDataPoint, double>(
+                  dataSource: _result?.standardResults ?? [],
+                  xValueMapper: (WealthDataPoint data, _) =>
+                      data.age.toDouble(),
+                  yValueMapper: (WealthDataPoint data, _) =>
+                      data.rothP1 + data.rothP2,
+                  color: const Color(
+                    0xFFF59E0B,
+                  ).withValues(alpha: 0.7), // Orange mapped to Roth
+                  name: 'Roth',
+                  animationDuration: 1000,
+                ),
+              ],
             ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildLegendItem('Taxable', const Color(0xFF6B7280)),
+              const SizedBox(width: 16),
+              _buildLegendItem('Tax-Deferred', const Color(0xFF10B981)),
+              const SizedBox(width: 16),
+              _buildLegendItem('Roth', const Color(0xFFF59E0B)),
+            ],
           ),
         ],
       ),
     );
   }
 
+  Widget _buildLegendItem(String label, Color color) {
+    return Row(
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 10, color: FinSpanTheme.bodyGray),
+        ),
+      ],
+    );
+  }
+
   Widget _buildKeyTakeaways(BuildContext context) {
+    if (_result == null) return const SizedBox.shrink();
     return FinSpanCard(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Column(
         children: [
           ListTile(
             leading: Icon(
-              _result.shortfallAge == null
+              _result!.shortfallAge == null
                   ? Icons.check_circle_outline
                   : Icons.warning_amber_rounded,
-              color: _result.shortfallAge == null
+              color: _result!.shortfallAge == null
                   ? FinSpanTheme.primaryGreen
                   : Colors.orangeAccent,
             ),
             title: const Text('Projected Shortfall Age'),
             trailing: Text(
-              _result.shortfallAge == null
+              _result!.shortfallAge == null
                   ? 'None'
-                  : 'Age ${_result.shortfallAge}',
+                  : 'Age ${_result!.shortfallAge}',
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
@@ -433,7 +636,7 @@ class _DetailedResultsScreenState extends State<DetailedResultsScreen> {
             leading: const Icon(Icons.account_balance_wallet_outlined),
             title: const Text('Ending Wealth'),
             trailing: Text(
-              'LKR ${(_result.endingWealth / 1000000).toStringAsFixed(1)}M',
+              'LKR ${(_result!.endingWealth / 1000000).toStringAsFixed(1)}M',
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
@@ -442,7 +645,7 @@ class _DetailedResultsScreenState extends State<DetailedResultsScreen> {
             leading: const Icon(Icons.trending_up),
             title: const Text('Peak Wealth'),
             trailing: Text(
-              'LKR ${(_result.years.map((y) => y.total).reduce((a, b) => a > b ? a : b) / 1000000).toStringAsFixed(1)}M',
+              'LKR ${(_result!.standardResults.map((y) => y.total).reduce((a, b) => a > b ? a : b) / 1000000).toStringAsFixed(1)}M',
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
