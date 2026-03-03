@@ -383,6 +383,8 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
         return StatefulBuilder(
           builder: (ctx, setSheetState) {
             final mc = _homeMcResult!;
+
+            // Compute selected value at _luckSliderValue
             double selectedVal;
             if (_luckSliderValue < 50) {
               double t = _luckSliderValue / 50.0;
@@ -400,122 +402,294 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
               return '\$${v.toStringAsFixed(0)}';
             }
 
+            // ── Outcome Distribution histogram (20 bins of final net worth) ─
+            final finalNetWorths =
+                mc.allRuns.map((r) => r.last.total).toList();
+            final minNW = finalNetWorths.reduce((a, b) => a < b ? a : b);
+            final maxNW = finalNetWorths.reduce((a, b) => a > b ? a : b);
+            const int numBins = 12;
+            final binSize = (maxNW - minNW) / numBins;
+            final List<_BinData> bins = List.generate(numBins, (i) {
+              final lo = minNW + i * binSize;
+              final hi = lo + binSize;
+              final count = finalNetWorths
+                  .where((nw) => nw >= lo && (i == numBins - 1 ? nw <= hi : nw < hi))
+                  .length;
+              final label = lo >= 1000000
+                  ? '${(lo / 1000000).toStringAsFixed(1)}M'
+                  : '${(lo / 1000).toInt()}K';
+              return _BinData(label, count);
+            });
+
+            // ── Market Returns from selected-percentile run ──────────────────
+            // Pick which run to use based on _luckSliderValue
+            final sortedRuns = [...mc.allRuns]
+              ..sort((a, b) => a.last.total.compareTo(b.last.total));
+            final runIndex = ((_luckSliderValue / 100) *
+                    (sortedRuns.length - 1))
+                .round()
+                .clamp(0, sortedRuns.length - 1);
+            final selectedRun = sortedRuns[runIndex];
+
+            // Year-over-year % change in total wealth as a proxy for market return
+            final List<_ReturnBar> returnBars = [];
+            for (int i = 1; i < selectedRun.length; i++) {
+              final prev = selectedRun[i - 1].total;
+              final curr = selectedRun[i].total;
+              final pct = prev > 0 ? ((curr - prev) / prev * 100) : 0.0;
+              returnBars.add(_ReturnBar(selectedRun[i].age, pct.toDouble()));
+            }
+
             return Container(
+              height: MediaQuery.of(context).size.height * 0.92,
               decoration: const BoxDecoration(
                 color: FinSpanTheme.backgroundLight,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
               ),
-              padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
               child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Handle
-                  Center(
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
                     child: Container(
-                      width: 40,
-                      height: 4,
+                      width: 40, height: 4,
                       decoration: BoxDecoration(
                         color: Colors.grey[300],
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Luck Slider',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: FinSpanTheme.primaryGreen.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Text(
-                          _luckDescription(_luckSliderValue),
-                          style: const TextStyle(
-                            color: FinSpanTheme.primaryGreen,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // ── Header ──
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Monte Carlo Analysis',
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 18)),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: FinSpanTheme.primaryGreen
+                                      .withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Text(
+                                  '${(mc.allRuns.where((r) => r.last.total > 0).length / mc.allRuns.length * 100).toStringAsFixed(0)}% Success',
+                                  style: const TextStyle(
+                                    color: FinSpanTheme.primaryGreen,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    'Drag to explore different market luck scenarios',
-                    style: TextStyle(color: FinSpanTheme.bodyGray, fontSize: 13),
-                  ),
-                  const SizedBox(height: 24),
-                  SfSlider(
-                    min: 0.0,
-                    max: 100.0,
-                    value: _luckSliderValue,
-                    interval: 25,
-                    showLabels: true,
-                    enableTooltip: true,
-                    minorTicksPerInterval: 0,
-                    activeColor: FinSpanTheme.primaryGreen,
-                    onChanged: (dynamic value) {
-                      setSheetState(() => _luckSliderValue = value);
-                      setState(() => _luckSliderValue = value);
-                    },
-                  ),
-                  const SizedBox(height: 24),
-                  // Result card
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          FinSpanTheme.primaryGreen.withValues(alpha: 0.1),
-                          FinSpanTheme.primaryGreen.withValues(alpha: 0.03),
+                          const SizedBox(height: 4),
+                          const Text('100 simulations • 15% volatility',
+                              style: TextStyle(
+                                  color: FinSpanTheme.bodyGray, fontSize: 12)),
+                          const SizedBox(height: 20),
+
+                          // ── Luck Slider ──
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Luck Slider',
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15)),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  _luckDescription(_luckSliderValue),
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          SfSlider(
+                            min: 0.0,
+                            max: 100.0,
+                            value: _luckSliderValue,
+                            interval: 25,
+                            showLabels: true,
+                            enableTooltip: true,
+                            minorTicksPerInterval: 0,
+                            activeColor: FinSpanTheme.primaryGreen,
+                            onChanged: (dynamic value) {
+                              setSheetState(() => _luckSliderValue = value);
+                              setState(() => _luckSliderValue = value);
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          // Percentile result
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(colors: [
+                                FinSpanTheme.primaryGreen.withValues(alpha: 0.1),
+                                FinSpanTheme.primaryGreen.withValues(alpha: 0.03),
+                              ]),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                  color: FinSpanTheme.primaryGreen
+                                      .withValues(alpha: 0.2)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                    '${_luckSliderValue.toInt()}th percentile outcome',
+                                    style: const TextStyle(
+                                        fontSize: 12,
+                                        color: FinSpanTheme.bodyGray)),
+                                const SizedBox(height: 4),
+                                Text('Final portfolio: ${formatMoney(selectedVal)}',
+                                    style: const TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.bold)),
+                                const SizedBox(height: 10),
+                                Row(children: [
+                                  _badgeChip('P10: ${formatMoney(mc.p10.last.total)}',
+                                      Colors.red),
+                                  const SizedBox(width: 6),
+                                  _badgeChip('P50: ${formatMoney(mc.median.last.total)}',
+                                      const Color(0xFF8B5CF6)),
+                                  const SizedBox(width: 6),
+                                  _badgeChip('P90: ${formatMoney(mc.p90.last.total)}',
+                                      FinSpanTheme.primaryGreen),
+                                ]),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(height: 24),
+
+                          // ── Outcome Distribution ──────────────────────────
+                          const Text('Outcome Distribution',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 15)),
+                          const Text('100 simulations',
+                              style: TextStyle(
+                                  color: FinSpanTheme.bodyGray, fontSize: 12)),
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            height: 180,
+                            child: SfCartesianChart(
+                              plotAreaBorderWidth: 0,
+                              margin: EdgeInsets.zero,
+                              primaryXAxis: CategoryAxis(
+                                majorGridLines: const MajorGridLines(width: 0),
+                                labelRotation: -45,
+                                labelStyle:
+                                    const TextStyle(fontSize: 8),
+                              ),
+                              primaryYAxis: NumericAxis(
+                                axisLine: const AxisLine(width: 0),
+                                majorTickLines: const MajorTickLines(size: 0),
+                                axisLabelFormatter: (AxisLabelRenderDetails d) {
+                                  return ChartAxisLabel(
+                                      d.value.toInt().toString(), null);
+                                },
+                              ),
+                              series: <CartesianSeries>[
+                                ColumnSeries<_BinData, String>(
+                                  dataSource: bins,
+                                  xValueMapper: (d, _) => d.label,
+                                  yValueMapper: (d, _) => d.count,
+                                  color:
+                                      FinSpanTheme.primaryGreen.withValues(alpha: 0.8),
+                                  borderRadius: BorderRadius.circular(4),
+                                  animationDuration: 400,
+                                ),
+                              ],
+                            ),
+                          ),
+                          // Stats chips below histogram
+                          const SizedBox(height: 8),
+                          Row(children: [
+                            _badgeChip(
+                                '${(mc.allRuns.where((r) => r.last.total > 0).length / mc.allRuns.length * 100).toStringAsFixed(1)}% success',
+                                FinSpanTheme.primaryGreen),
+                            const SizedBox(width: 6),
+                            _badgeChip('100 runs',
+                                const Color(0xFF6B7280)),
+                            const SizedBox(width: 6),
+                            _badgeChip('15% vol',
+                                const Color(0xFF8B5CF6)),
+                          ]),
+
+                          const SizedBox(height: 24),
+
+                          // ── Market Returns ────────────────────────────────
+                          Text(
+                            'Market Returns',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 15),
+                          ),
+                          Text(
+                              '${_luckSliderValue.toInt()}th percentile scenario',
+                              style: const TextStyle(
+                                  color: FinSpanTheme.bodyGray, fontSize: 12)),
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            height: 180,
+                            child: SfCartesianChart(
+                              plotAreaBorderWidth: 0,
+                              margin: EdgeInsets.zero,
+                              primaryXAxis: NumericAxis(
+                                majorGridLines: const MajorGridLines(width: 0),
+                                axisLabelFormatter: (AxisLabelRenderDetails d) {
+                                  return ChartAxisLabel(
+                                      'Age ${d.value.toInt()}', null);
+                                },
+                              ),
+                              primaryYAxis: NumericAxis(
+                                axisLine: const AxisLine(width: 0),
+                                majorTickLines: const MajorTickLines(size: 0),
+                                axisLabelFormatter: (AxisLabelRenderDetails d) {
+                                  return ChartAxisLabel(
+                                      '${d.value.toInt()}%', null);
+                                },
+                              ),
+                              series: <CartesianSeries>[
+                                ColumnSeries<_ReturnBar, double>(
+                                  dataSource: returnBars,
+                                  xValueMapper: (d, _) => d.age.toDouble(),
+                                  yValueMapper: (d, _) => d.returnPct,
+                                  pointColorMapper: (d, _) => d.returnPct >= 0
+                                      ? FinSpanTheme.primaryGreen.withValues(alpha: 0.85)
+                                      : Colors.red.withValues(alpha: 0.85),
+                                  borderRadius: BorderRadius.circular(2),
+                                  animationDuration: 400,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Wrap(spacing: 10, children: [
+                            _badgeChip('↑ Positive', FinSpanTheme.primaryGreen),
+                            _badgeChip('↓ Negative', Colors.red),
+                          ]),
                         ],
                       ),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: FinSpanTheme.primaryGreen.withValues(alpha: 0.2),
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'At ${_luckSliderValue.toInt()}th percentile',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: FinSpanTheme.bodyGray,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Final portfolio: ${formatMoney(selectedVal)}',
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: FinSpanTheme.charcoal,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            _badgeChip('P10: ${formatMoney(mc.p10.last.total)}', Colors.red),
-                            const SizedBox(width: 8),
-                            _badgeChip('P50: ${formatMoney(mc.median.last.total)}', const Color(0xFF8B5CF6)),
-                            const SizedBox(width: 8),
-                            _badgeChip('P90: ${formatMoney(mc.p90.last.total)}', FinSpanTheme.primaryGreen),
-                          ],
-                        ),
-                      ],
                     ),
                   ),
-                  const SizedBox(height: 16),
                 ],
               ),
             );
@@ -1532,6 +1706,19 @@ class _PieData {
   final double y;
   final Color color;
 }
+
+class _BinData {
+  final String label;
+  final int count;
+  const _BinData(this.label, this.count);
+}
+
+class _ReturnBar {
+  final int age;
+  final double returnPct;
+  const _ReturnBar(this.age, this.returnPct);
+}
+
 
 class _ReturnData {
   _ReturnData(this.year, this.percentChange);
