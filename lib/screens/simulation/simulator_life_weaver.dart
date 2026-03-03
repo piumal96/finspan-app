@@ -20,7 +20,8 @@ class SimulatorLifeWeaverScreen extends StatefulWidget {
       _SimulatorLifeWeaverScreenState();
 }
 
-class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen> {
+class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
+    with AutomaticKeepAliveClientMixin {
   late int _currentAge;
   late int _lifeExpectancy;
   late List<LifeEvent> _events;
@@ -36,6 +37,9 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen> {
 
   // History for undo
   final List<List<LifeEvent>> _history = [];
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -359,20 +363,25 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen> {
                         ),
                       ),
                       onTap: () {
+                        final newEvent = LifeEvent(
+                          id: DateTime.now().millisecondsSinceEpoch.toString(),
+                          type: opt.type,
+                          name: opt.label,
+                          startAge: age,
+                          endAge: _defaultEndAge(opt.type, age),
+                          params: _defaultParams(opt.type),
+                        );
+
                         Navigator.pop(ctx);
+
                         setState(() {
-                          _events.add(
-                            LifeEvent(
-                              id: DateTime.now().millisecondsSinceEpoch
-                                  .toString(),
-                              type: opt.type,
-                              name: opt.label,
-                              startAge: age,
-                              endAge: _defaultEndAge(opt.type, age),
-                              params: _defaultParams(opt.type),
-                            ),
-                          );
+                          _events.add(newEvent);
                           _recalculate();
+                        });
+
+                        // Immediately open editor for the new event to allow details config
+                        Future.delayed(const Duration(milliseconds: 100), () {
+                          if (mounted) _showEventEditor(newEvent);
                         });
                       },
                     );
@@ -506,6 +515,7 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Required by AutomaticKeepAliveClientMixin
     final double maxWealth = _wealthData.isEmpty
         ? 1
         : _wealthData.map((d) => d.total).reduce((a, b) => a > b ? a : b);
@@ -516,6 +526,7 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen> {
     return Scaffold(
       backgroundColor: FinSpanTheme.backgroundLight,
       appBar: AppBar(
+        automaticallyImplyLeading: false, // No back button needed in tab view
         backgroundColor: FinSpanTheme.backgroundLight,
         elevation: 0,
         title: const Text(
@@ -538,21 +549,16 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildInsightCards(),
-              const SizedBox(height: 20),
-              _buildMonteCarloToggle(),
-              if (_enableMonteCarlo) ...[
-                const SizedBox(height: 16),
-                _buildLuckSlider(),
-              ],
-              const SizedBox(height: 20),
+              const SizedBox(height: 8),
               _buildWealthChart(dynamicMaxY),
-              const SizedBox(height: 20),
+              const SizedBox(height: 8),
               FinSpanCard(
+                padding: const EdgeInsets.all(12),
                 child: FinSpanLifeBar(
                   currentAge: _currentAge,
                   retirementAge:
@@ -569,7 +575,7 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen> {
                   onAgeChange: _onAgeChange,
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               Center(
                 child: Text(
                   '💡 Drag events or the age handle to see your future change.',
@@ -581,7 +587,7 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 16),
             ],
           ),
         ),
@@ -599,248 +605,75 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen> {
         ? '😐'
         : '😟';
 
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 12,
-      crossAxisSpacing: 12,
-      childAspectRatio:
-          1.3, // Reduced from 1.8 to give cards more vertical room on small screens
+    return Row(
       children: [
-        _insightCard(
-          'Net Worth',
-          'at age $_currentAge',
-          _formatMoney(ins.netWorth),
-          FinSpanTheme.primaryGreen,
+        Expanded(
+          child: _insightCard(
+            'Net Worth',
+            _formatMoney(ins.netWorth),
+            FinSpanTheme.primaryGreen,
+          ),
         ),
-        _insightCard(
-          'Monthly Cash Flow',
-          ins.monthlyCashFlow >= 0 ? 'surplus' : 'spending more',
-          _formatMoney(ins.monthlyCashFlow),
-          ins.monthlyCashFlow >= 0 ? FinSpanTheme.primaryGreen : Colors.orange,
+        const SizedBox(width: 8),
+        Expanded(
+          child: _insightCard(
+            'Cash Flow',
+            _formatMoney(ins.monthlyCashFlow),
+            ins.monthlyCashFlow >= 0
+                ? FinSpanTheme.primaryGreen
+                : Colors.orange,
+          ),
         ),
-        _insightCard(
-          'Life Stress',
-          ins.stressLevel < 55
-              ? 'Manageable'
-              : ins.stressLevel < 75
-              ? 'Elevated'
-              : 'High',
-          stressEmoji,
-          ins.stressLevel < 55
-              ? FinSpanTheme.primaryGreen
-              : ins.stressLevel < 75
-              ? Colors.orange
-              : Colors.red,
+        const SizedBox(width: 8),
+        Expanded(
+          child: _insightCard(
+            'Stress',
+            stressEmoji,
+            ins.stressLevel < 55
+                ? FinSpanTheme.primaryGreen
+                : ins.stressLevel < 75
+                ? Colors.orange
+                : Colors.red,
+          ),
         ),
-        _insightCard(
-          'Retirement',
-          'planned at ${ins.retirementAge}',
-          ins.riskLevel == 'safe'
-              ? '✓ On Track'
-              : ins.riskLevel == 'caution'
-              ? '⚡ Tight'
-              : '👀 Needs Attention',
-          ins.riskLevel == 'safe'
-              ? FinSpanTheme.primaryGreen
-              : ins.riskLevel == 'caution'
-              ? Colors.orange
-              : Colors.red,
+        const SizedBox(width: 8),
+        Expanded(
+          child: _insightCard(
+            'Plan',
+            ins.riskLevel == 'safe' ? 'On Track' : 'Adjustment',
+            ins.riskLevel == 'safe' ? FinSpanTheme.primaryGreen : Colors.red,
+          ),
         ),
       ],
     );
   }
 
-  Widget _insightCard(
-    String label,
-    String sublabel,
-    String value,
-    Color color,
-  ) {
-    return FinSpanCard(
-      padding: const EdgeInsets.all(8), // Reduced from 12 to prevent overflow
+  Widget _insightCard(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: FinSpanTheme.dividerColor.withValues(alpha: 0.5),
+        ),
+      ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisSize: MainAxisSize.min,
         children: [
+          Text(
+            label,
+            style: const TextStyle(fontSize: 10, color: FinSpanTheme.bodyGray),
+          ),
+          const SizedBox(height: 4),
           FittedBox(
             fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
             child: Text(
               value,
               style: TextStyle(
-                fontSize: 18,
+                fontSize: 13,
                 fontWeight: FontWeight.bold,
                 color: color,
-              ),
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  label,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: FinSpanTheme.charcoal,
-                  ),
-                ),
-              ),
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  sublabel,
-                  style: const TextStyle(
-                    fontSize: 10,
-                    color: FinSpanTheme.bodyGray,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMonteCarloToggle() {
-    return FinSpanCard(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.analytics_rounded,
-                color: FinSpanTheme.primaryGreen,
-              ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Monte Carlo Analysis',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
-                  if (_enableMonteCarlo && _mcResult != null)
-                    const Text(
-                      '100 simulations generated',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: FinSpanTheme.primaryGreen,
-                      ),
-                    )
-                  else
-                    const Text(
-                      'Test market volatility locally',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: FinSpanTheme.bodyGray,
-                      ),
-                    ),
-                ],
-              ),
-            ],
-          ),
-          Switch(
-            value: _enableMonteCarlo,
-            activeColor: FinSpanTheme.primaryGreen,
-            onChanged: (val) {
-              setState(() {
-                _enableMonteCarlo = val;
-                _recalculate();
-              });
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLuckSlider() {
-    // Determine title text based on slider position
-    String luckLabel = '😐 Average';
-    if (_luckPercentile < 30) luckLabel = '😢 Unlucky';
-    if (_luckPercentile > 70) luckLabel = '🤩 Lucky';
-
-    // Interpolate final portfolio value based on P10, Median, P90
-    double val = 0;
-    if (_mcResult != null) {
-      if (_luckPercentile < 50) {
-        double t = _luckPercentile / 50.0;
-        val =
-            _mcResult!.p10.last.total +
-            (_mcResult!.median.last.total - _mcResult!.p10.last.total) * t;
-      } else {
-        double t = (_luckPercentile - 50.0) / 50.0;
-        val =
-            _mcResult!.median.last.total +
-            (_mcResult!.p90.last.total - _mcResult!.median.last.total) * t;
-      }
-    }
-
-    return FinSpanCard(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Luck Slider',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.grey.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(luckLabel, style: const TextStyle(fontSize: 12)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          SfSlider(
-            min: 0.0,
-            max: 100.0,
-            value: _luckPercentile,
-            interval: 50,
-            showTicks: true,
-            showLabels: true,
-            enableTooltip: true,
-            minorTicksPerInterval: 0,
-            activeColor: FinSpanTheme.primaryGreen,
-            onChanged: (dynamic value) {
-              setState(() {
-                _luckPercentile = value;
-                // No need to _recalculate, just redraws the chart selection
-              });
-            },
-          ),
-          const SizedBox(height: 16),
-          Center(
-            child: RichText(
-              text: TextSpan(
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: FinSpanTheme.charcoal,
-                ),
-                children: [
-                  TextSpan(
-                    text: '${_luckPercentile.toInt()}th percentile: ',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  TextSpan(text: 'Final portfolio ${_formatMoney(val)}'),
-                ],
               ),
             ),
           ),
@@ -851,6 +684,7 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen> {
 
   Widget _buildWealthChart(double dynamicMaxY) {
     return FinSpanCard(
+      padding: const EdgeInsets.all(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -996,7 +830,10 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen> {
             children: [
               if (_enableMonteCarlo) ...[
                 _legendDot('Your Plan', const Color(0xFF6366F1)),
-                _legendDot('90th Pct', FinSpanTheme.primaryGreen.withValues(alpha: 0.8)),
+                _legendDot(
+                  '90th Pct',
+                  FinSpanTheme.primaryGreen.withValues(alpha: 0.8),
+                ),
                 _legendDot('10th Pct', Colors.red.withValues(alpha: 0.8)),
                 _legendDot('50th Pct', const Color(0xFFF59E0B)),
               ] else ...[

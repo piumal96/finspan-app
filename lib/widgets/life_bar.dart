@@ -95,7 +95,7 @@ class _FinSpanLifeBarState extends State<FinSpanLifeBar> {
             ),
           ],
         ),
-        const SizedBox(height: 32),
+        const SizedBox(height: 12),
         LayoutBuilder(
           builder: (context, constraints) {
             double ageToPos(int age) {

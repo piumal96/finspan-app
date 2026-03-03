@@ -9,8 +9,8 @@ class FinSpanTheme {
   static const Color charcoal = Color(0xFF212B36); // MUI Text Primary
   static const Color bodyGray = Color(0xFF637381); // MUI Text Secondary
   static const Color backgroundLight = Color(
-    0xFFF9FAFB,
-  ); // MUI Neutral Background
+    0xFFF4F6F8,
+  ); // MUI Neutral Background, slightly deeper off-white
   static const Color white = Colors.white;
   static const Color dividerColor = Color(0xFFDFE3E8); // MUI Divider
 

@@ -8,7 +8,7 @@ import 'onboarding_step_4.dart';
 import 'onboarding_step_5.dart';
 import 'onboarding_step_6.dart';
 import 'onboarding_data.dart';
-import '../simulation/simulation_runner.dart';
+import '../dashboard/main_dashboard.dart';
 
 class OnboardingWrapper extends StatefulWidget {
   const OnboardingWrapper({super.key});
@@ -41,10 +41,17 @@ class _OnboardingWrapperState extends State<OnboardingWrapper> {
   }
 
   void _navigateToSimulation() {
-    Navigator.push(
+    // Skip the API simulation runner — go directly to the dashboard.
+    // The Simulator tab and Wealth Trajectory chart use LocalWealthCalculator
+    // for instant, real-time results without any network call.
+    Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (context) => SimulationRunnerScreen(data: _onboardingData),
+        builder: (context) => MainDashboardScreen(
+          data: _onboardingData,
+          result: null,
+          fromSim: false,
+        ),
       ),
     );
   }

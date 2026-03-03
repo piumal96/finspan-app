@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../../theme/finspan_theme.dart';
 
@@ -17,9 +18,7 @@ class OnboardingStep2Screen extends StatefulWidget {
 }
 
 class _OnboardingStep2ScreenState extends State<OnboardingStep2Screen> {
-  final TextEditingController _nameController = TextEditingController(
-    text: "Yasantha",
-  );
+  final TextEditingController _nameController = TextEditingController();
   String _selectedGender = "Male";
 
   @override
@@ -55,16 +54,26 @@ class _OnboardingStep2ScreenState extends State<OnboardingStep2Screen> {
                     // Name Input
                     _buildInputCard(
                       label: "What should we call you?",
-                      child: TextField(
-                        controller: _nameController,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: FinSpanTheme.backgroundLight,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: FinSpanTheme.dividerColor),
                         ),
-                        decoration: const InputDecoration(
-                          hintText: "Enter your name",
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.zero,
+                        child: TextField(
+                          controller: _nameController,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          decoration: const InputDecoration(
+                            hintText: "E.g. Alex",
+                            border: InputBorder.none,
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 14,
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -73,32 +82,61 @@ class _OnboardingStep2ScreenState extends State<OnboardingStep2Screen> {
 
                     // Date of Birth
                     GestureDetector(
-                      onTap: () async {
-                        final DateTime? picked = await showDatePicker(
+                      onTap: () {
+                        // Use a Cupertino date picker for easier year/month scrolling
+                        DateTime tempPickedDate =
+                            widget.data.birthDate ?? DateTime(1990, 1, 1);
+                        showCupertinoModalPopup(
                           context: context,
-                          initialDate:
-                              widget.data.birthDate ?? DateTime(1990, 1, 1),
-                          firstDate: DateTime(1900),
-                          lastDate: DateTime.now(),
-                          builder: (context, child) {
-                            return Theme(
-                              data: Theme.of(context).copyWith(
-                                colorScheme: ColorScheme.light(
-                                  primary: FinSpanTheme.primaryGreen,
-                                  onPrimary: Colors.white,
-                                  onSurface: FinSpanTheme.charcoal,
-                                ),
+                          builder: (BuildContext builder) {
+                            return Container(
+                              height: 300,
+                              color: Colors.white,
+                              child: Column(
+                                children: [
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      CupertinoButton(
+                                        child: const Text('Cancel'),
+                                        onPressed: () {
+                                          Navigator.of(context).pop();
+                                        },
+                                      ),
+                                      CupertinoButton(
+                                        child: const Text('Done'),
+                                        onPressed: () {
+                                          setState(() {
+                                            widget.data.birthDate =
+                                                tempPickedDate;
+                                            widget.data
+                                                .updateAgeFromBirthDate();
+                                          });
+                                          Navigator.of(context).pop();
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                  Expanded(
+                                    child: SafeArea(
+                                      top: false,
+                                      child: CupertinoDatePicker(
+                                        mode: CupertinoDatePickerMode.date,
+                                        initialDateTime: tempPickedDate,
+                                        minimumDate: DateTime(1900),
+                                        maximumDate: DateTime.now(),
+                                        onDateTimeChanged: (DateTime newDate) {
+                                          tempPickedDate = newDate;
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
-                              child: child!,
                             );
                           },
                         );
-                        if (picked != null) {
-                          setState(() {
-                            widget.data.birthDate = picked;
-                            widget.data.updateAgeFromBirthDate();
-                          });
-                        }
                       },
                       child: _buildInputCard(
                         label: "When is your birthday?",
@@ -127,7 +165,7 @@ class _OnboardingStep2ScreenState extends State<OnboardingStep2Screen> {
                               Chip(
                                 label: Text("${widget.data.currentAge} yrs"),
                                 backgroundColor: FinSpanTheme.primaryGreen
-                                    .withOpacity(0.1),
+                                    .withValues(alpha: 0.1),
                                 labelStyle: TextStyle(
                                   color: FinSpanTheme.primaryGreen,
                                   fontWeight: FontWeight.bold,

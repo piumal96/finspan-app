@@ -230,7 +230,7 @@ class _MonteCarloScreenState extends State<MonteCarloScreen> {
                 activationMode: ActivationMode.singleTap,
                 tooltipSettings: const InteractiveTooltip(
                   enable: true,
-                  format: 'Age point.x: LKR point.y',
+                  format: 'Age point.x: \$point.y',
                 ),
               ),
               primaryXAxis: NumericAxis(

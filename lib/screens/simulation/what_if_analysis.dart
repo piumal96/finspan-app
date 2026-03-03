@@ -204,7 +204,7 @@ class _WhatIfAnalysisScreenState extends State<WhatIfAnalysisScreen> {
                                 0,
                                 500,
                                 (val) => setState(() => _monthlySavings = val),
-                                'LKR ${_monthlySavings.toInt()}K',
+                                '\$${_monthlySavings.toInt()}K',
                               ),
                               _buildSlider(
                                 'Post-Retirement Spending',
@@ -214,7 +214,7 @@ class _WhatIfAnalysisScreenState extends State<WhatIfAnalysisScreen> {
                                 (val) => setState(
                                   () => _postRetirementSpending = val,
                                 ),
-                                'LKR ${_postRetirementSpending.toInt()}K',
+                                '\$${_postRetirementSpending.toInt()}K',
                               ),
                             ],
                           ),

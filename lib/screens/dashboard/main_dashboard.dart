@@ -34,6 +34,9 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
   bool _showAlert = false;
   double _luckSliderValue = 50.0;
 
+  // Mutable copy of onboarding data — updated when user saves from My Plan
+  late OnboardingData _currentData;
+
   // Home tab Local Monte Carlo
   bool _homeEnableMonteCarlo = false;
   LocalMonteCarloResult? _homeMcResult;
@@ -42,31 +45,53 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
   @override
   void initState() {
     super.initState();
+    _currentData = widget.data ?? OnboardingData();
     _showAlert = widget.fromSim && widget.result != null;
     _initHomeWealthData();
+  }
+
+  void _onDataSaved(OnboardingData updated) {
+    setState(() => _currentData = updated);
   }
 
   void _initHomeWealthData() {
     final age = widget.data?.currentAge ?? 30;
     final lifeExp = widget.data?.lifeExpectancy ?? 90;
-    // Build a default set of events from onboarding data
-    final events = <LifeEvent>[
+    _homeWealthData = LocalWealthCalculator.calculate(
+      _buildHomeEvents(),
+      age,
+      lifeExp,
+    );
+  }
+
+  /// Same default events as `SimulatorLifeWeaverScreen._buildDefaultEvents()`
+  /// so the Home Wealth Trajectory matches the Simulator tab exactly.
+  List<LifeEvent> _buildHomeEvents() {
+    final age = widget.data?.currentAge ?? 30;
+    final lifeExp = widget.data?.lifeExpectancy ?? 90;
+    return [
       LifeEvent(
         id: '1',
         type: LifeEventType.job,
-        name: 'Career',
+        name: 'Current Job',
         startAge: age,
         params: const {'incomeLevel': 'good'},
       ),
       LifeEvent(
         id: '2',
+        type: LifeEventType.home,
+        name: 'Buy Home',
+        startAge: (age + 5).clamp(age, lifeExp),
+        params: const {'costLevel': 'expensive', 'hasGoodSavings': true},
+      ),
+      LifeEvent(
+        id: '3',
         type: LifeEventType.retirement,
         name: 'Retirement',
         startAge: widget.data?.retirementAge ?? 65,
         params: const {'lifestyleLevel': 'moderate'},
       ),
     ];
-    _homeWealthData = LocalWealthCalculator.calculate(events, age, lifeExp);
   }
 
   @override
@@ -92,7 +117,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
 
     return Scaffold(
       backgroundColor: FinSpanTheme.backgroundLight,
-      appBar: _selectedIndex == 3
+      appBar: (_selectedIndex == 1 || _selectedIndex == 3)
           ? null
           : AppBar(
               backgroundColor: FinSpanTheme.backgroundLight,
@@ -148,10 +173,10 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
             annualContribution,
             yearsToRetirement,
           ),
-          const AccountsBreakdownScreen(),
+          AccountsBreakdownScreen(data: _currentData),
           // Simulator tab — fully local, no API, real-time
-          SimulatorLifeWeaverScreen(data: widget.data),
-          ProfileScreen(data: widget.data),
+          SimulatorLifeWeaverScreen(data: _currentData),
+          ProfileScreen(data: _currentData, onDataSaved: _onDataSaved),
         ],
       ),
       bottomNavigationBar: _buildBottomNav(),
@@ -301,7 +326,10 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
             GestureDetector(
               onTap: _showLuckSliderSheet,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 margin: const EdgeInsets.only(right: 8),
                 decoration: BoxDecoration(
                   color: FinSpanTheme.primaryGreen.withValues(alpha: 0.1),
@@ -310,7 +338,11 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.tune, size: 14, color: FinSpanTheme.primaryGreen),
+                    const Icon(
+                      Icons.tune,
+                      size: 14,
+                      color: FinSpanTheme.primaryGreen,
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       '${_luckSliderValue.toInt()}th%',
@@ -334,24 +366,11 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                 if (val && _homeMcResult == null) {
                   final age = widget.data?.currentAge ?? 30;
                   final lifeExp = widget.data?.lifeExpectancy ?? 90;
-                  final events = <LifeEvent>[
-                    LifeEvent(
-                      id: '1',
-                      type: LifeEventType.job,
-                      name: 'Career',
-                      startAge: age,
-                      params: const {'incomeLevel': 'good'},
-                    ),
-                    LifeEvent(
-                      id: '2',
-                      type: LifeEventType.retirement,
-                      name: 'Retirement',
-                      startAge: widget.data?.retirementAge ?? 65,
-                      params: const {'lifestyleLevel': 'moderate'},
-                    ),
-                  ];
+                  // Use same events as Simulator tab
                   _homeMcResult = LocalWealthCalculator.calculateMonteCarlo(
-                    events, age, lifeExp,
+                    _buildHomeEvents(),
+                    age,
+                    lifeExp,
                   );
                 } else if (!val) {
                   _homeMcResult = null;
@@ -388,11 +407,13 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
             double selectedVal;
             if (_luckSliderValue < 50) {
               double t = _luckSliderValue / 50.0;
-              selectedVal = mc.p10.last.total +
+              selectedVal =
+                  mc.p10.last.total +
                   (mc.median.last.total - mc.p10.last.total) * t;
             } else {
               double t = (_luckSliderValue - 50.0) / 50.0;
-              selectedVal = mc.median.last.total +
+              selectedVal =
+                  mc.median.last.total +
                   (mc.p90.last.total - mc.median.last.total) * t;
             }
 
@@ -403,8 +424,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
             }
 
             // ── Outcome Distribution histogram (20 bins of final net worth) ─
-            final finalNetWorths =
-                mc.allRuns.map((r) => r.last.total).toList();
+            final finalNetWorths = mc.allRuns.map((r) => r.last.total).toList();
             final minNW = finalNetWorths.reduce((a, b) => a < b ? a : b);
             final maxNW = finalNetWorths.reduce((a, b) => a > b ? a : b);
             const int numBins = 12;
@@ -413,7 +433,9 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
               final lo = minNW + i * binSize;
               final hi = lo + binSize;
               final count = finalNetWorths
-                  .where((nw) => nw >= lo && (i == numBins - 1 ? nw <= hi : nw < hi))
+                  .where(
+                    (nw) => nw >= lo && (i == numBins - 1 ? nw <= hi : nw < hi),
+                  )
                   .length;
               final label = lo >= 1000000
                   ? '${(lo / 1000000).toStringAsFixed(1)}M'
@@ -425,10 +447,10 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
             // Pick which run to use based on _luckSliderValue
             final sortedRuns = [...mc.allRuns]
               ..sort((a, b) => a.last.total.compareTo(b.last.total));
-            final runIndex = ((_luckSliderValue / 100) *
-                    (sortedRuns.length - 1))
-                .round()
-                .clamp(0, sortedRuns.length - 1);
+            final runIndex =
+                ((_luckSliderValue / 100) * (sortedRuns.length - 1))
+                    .round()
+                    .clamp(0, sortedRuns.length - 1);
             final selectedRun = sortedRuns[runIndex];
 
             // Year-over-year % change in total wealth as a proxy for market return
@@ -452,7 +474,8 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     child: Container(
-                      width: 40, height: 4,
+                      width: 40,
+                      height: 4,
                       decoration: BoxDecoration(
                         color: Colors.grey[300],
                         borderRadius: BorderRadius.circular(2),
@@ -469,16 +492,22 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Text('Monte Carlo Analysis',
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 18)),
+                              const Text(
+                                'Monte Carlo Analysis',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 18,
+                                ),
+                              ),
                               Container(
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 4),
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: FinSpanTheme.primaryGreen
-                                      .withValues(alpha: 0.12),
+                                  color: FinSpanTheme.primaryGreen.withValues(
+                                    alpha: 0.12,
+                                  ),
                                   borderRadius: BorderRadius.circular(16),
                                 ),
                                 child: Text(
@@ -493,22 +522,31 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                             ],
                           ),
                           const SizedBox(height: 4),
-                          const Text('100 simulations • 15% volatility',
-                              style: TextStyle(
-                                  color: FinSpanTheme.bodyGray, fontSize: 12)),
+                          const Text(
+                            '100 simulations • 15% volatility',
+                            style: TextStyle(
+                              color: FinSpanTheme.bodyGray,
+                              fontSize: 12,
+                            ),
+                          ),
                           const SizedBox(height: 20),
 
                           // ── Luck Slider ──
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Text('Luck Slider',
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 15)),
+                              const Text(
+                                'Luck Slider',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                ),
+                              ),
                               Container(
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 4),
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
                                 decoration: BoxDecoration(
                                   color: Colors.grey.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(12),
@@ -541,39 +579,60 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                             width: double.infinity,
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
-                              gradient: LinearGradient(colors: [
-                                FinSpanTheme.primaryGreen.withValues(alpha: 0.1),
-                                FinSpanTheme.primaryGreen.withValues(alpha: 0.03),
-                              ]),
+                              gradient: LinearGradient(
+                                colors: [
+                                  FinSpanTheme.primaryGreen.withValues(
+                                    alpha: 0.1,
+                                  ),
+                                  FinSpanTheme.primaryGreen.withValues(
+                                    alpha: 0.03,
+                                  ),
+                                ],
+                              ),
                               borderRadius: BorderRadius.circular(14),
                               border: Border.all(
-                                  color: FinSpanTheme.primaryGreen
-                                      .withValues(alpha: 0.2)),
+                                color: FinSpanTheme.primaryGreen.withValues(
+                                  alpha: 0.2,
+                                ),
+                              ),
                             ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                    '${_luckSliderValue.toInt()}th percentile outcome',
-                                    style: const TextStyle(
-                                        fontSize: 12,
-                                        color: FinSpanTheme.bodyGray)),
+                                  '${_luckSliderValue.toInt()}th percentile outcome',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: FinSpanTheme.bodyGray,
+                                  ),
+                                ),
                                 const SizedBox(height: 4),
-                                Text('Final portfolio: ${formatMoney(selectedVal)}',
-                                    style: const TextStyle(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.bold)),
+                                Text(
+                                  'Final portfolio: ${formatMoney(selectedVal)}',
+                                  style: const TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                                 const SizedBox(height: 10),
-                                Row(children: [
-                                  _badgeChip('P10: ${formatMoney(mc.p10.last.total)}',
-                                      Colors.red),
-                                  const SizedBox(width: 6),
-                                  _badgeChip('P50: ${formatMoney(mc.median.last.total)}',
-                                      const Color(0xFF8B5CF6)),
-                                  const SizedBox(width: 6),
-                                  _badgeChip('P90: ${formatMoney(mc.p90.last.total)}',
-                                      FinSpanTheme.primaryGreen),
-                                ]),
+                                Row(
+                                  children: [
+                                    _badgeChip(
+                                      'P10: ${formatMoney(mc.p10.last.total)}',
+                                      Colors.red,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    _badgeChip(
+                                      'P50: ${formatMoney(mc.median.last.total)}',
+                                      const Color(0xFF8B5CF6),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    _badgeChip(
+                                      'P90: ${formatMoney(mc.p90.last.total)}',
+                                      FinSpanTheme.primaryGreen,
+                                    ),
+                                  ],
+                                ),
                               ],
                             ),
                           ),
@@ -581,12 +640,20 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                           const SizedBox(height: 24),
 
                           // ── Outcome Distribution ──────────────────────────
-                          const Text('Outcome Distribution',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.bold, fontSize: 15)),
-                          const Text('100 simulations',
-                              style: TextStyle(
-                                  color: FinSpanTheme.bodyGray, fontSize: 12)),
+                          const Text(
+                            'Outcome Distribution',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
+                          ),
+                          const Text(
+                            '100 simulations',
+                            style: TextStyle(
+                              color: FinSpanTheme.bodyGray,
+                              fontSize: 12,
+                            ),
+                          ),
                           const SizedBox(height: 10),
                           SizedBox(
                             height: 180,
@@ -596,15 +663,16 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                               primaryXAxis: CategoryAxis(
                                 majorGridLines: const MajorGridLines(width: 0),
                                 labelRotation: -45,
-                                labelStyle:
-                                    const TextStyle(fontSize: 8),
+                                labelStyle: const TextStyle(fontSize: 8),
                               ),
                               primaryYAxis: NumericAxis(
                                 axisLine: const AxisLine(width: 0),
                                 majorTickLines: const MajorTickLines(size: 0),
                                 axisLabelFormatter: (AxisLabelRenderDetails d) {
                                   return ChartAxisLabel(
-                                      d.value.toInt().toString(), null);
+                                    d.value.toInt().toString(),
+                                    null,
+                                  );
                                 },
                               ),
                               series: <CartesianSeries>[
@@ -612,8 +680,9 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                                   dataSource: bins,
                                   xValueMapper: (d, _) => d.label,
                                   yValueMapper: (d, _) => d.count,
-                                  color:
-                                      FinSpanTheme.primaryGreen.withValues(alpha: 0.8),
+                                  color: FinSpanTheme.primaryGreen.withValues(
+                                    alpha: 0.8,
+                                  ),
                                   borderRadius: BorderRadius.circular(4),
                                   animationDuration: 400,
                                 ),
@@ -622,17 +691,18 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                           ),
                           // Stats chips below histogram
                           const SizedBox(height: 8),
-                          Row(children: [
-                            _badgeChip(
+                          Row(
+                            children: [
+                              _badgeChip(
                                 '${(mc.allRuns.where((r) => r.last.total > 0).length / mc.allRuns.length * 100).toStringAsFixed(1)}% success',
-                                FinSpanTheme.primaryGreen),
-                            const SizedBox(width: 6),
-                            _badgeChip('100 runs',
-                                const Color(0xFF6B7280)),
-                            const SizedBox(width: 6),
-                            _badgeChip('15% vol',
-                                const Color(0xFF8B5CF6)),
-                          ]),
+                                FinSpanTheme.primaryGreen,
+                              ),
+                              const SizedBox(width: 6),
+                              _badgeChip('100 runs', const Color(0xFF6B7280)),
+                              const SizedBox(width: 6),
+                              _badgeChip('15% vol', const Color(0xFF8B5CF6)),
+                            ],
+                          ),
 
                           const SizedBox(height: 24),
 
@@ -640,12 +710,17 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                           Text(
                             'Market Returns',
                             style: const TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 15),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
                           ),
                           Text(
-                              '${_luckSliderValue.toInt()}th percentile scenario',
-                              style: const TextStyle(
-                                  color: FinSpanTheme.bodyGray, fontSize: 12)),
+                            '${_luckSliderValue.toInt()}th percentile scenario',
+                            style: const TextStyle(
+                              color: FinSpanTheme.bodyGray,
+                              fontSize: 12,
+                            ),
+                          ),
                           const SizedBox(height: 10),
                           SizedBox(
                             height: 180,
@@ -656,7 +731,9 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                                 majorGridLines: const MajorGridLines(width: 0),
                                 axisLabelFormatter: (AxisLabelRenderDetails d) {
                                   return ChartAxisLabel(
-                                      'Age ${d.value.toInt()}', null);
+                                    'Age ${d.value.toInt()}',
+                                    null,
+                                  );
                                 },
                               ),
                               primaryYAxis: NumericAxis(
@@ -664,7 +741,9 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                                 majorTickLines: const MajorTickLines(size: 0),
                                 axisLabelFormatter: (AxisLabelRenderDetails d) {
                                   return ChartAxisLabel(
-                                      '${d.value.toInt()}%', null);
+                                    '${d.value.toInt()}%',
+                                    null,
+                                  );
                                 },
                               ),
                               series: <CartesianSeries>[
@@ -673,7 +752,9 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                                   xValueMapper: (d, _) => d.age.toDouble(),
                                   yValueMapper: (d, _) => d.returnPct,
                                   pointColorMapper: (d, _) => d.returnPct >= 0
-                                      ? FinSpanTheme.primaryGreen.withValues(alpha: 0.85)
+                                      ? FinSpanTheme.primaryGreen.withValues(
+                                          alpha: 0.85,
+                                        )
                                       : Colors.red.withValues(alpha: 0.85),
                                   borderRadius: BorderRadius.circular(2),
                                   animationDuration: 400,
@@ -682,10 +763,16 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                             ),
                           ),
                           const SizedBox(height: 10),
-                          Wrap(spacing: 10, children: [
-                            _badgeChip('↑ Positive', FinSpanTheme.primaryGreen),
-                            _badgeChip('↓ Negative', Colors.red),
-                          ]),
+                          Wrap(
+                            spacing: 10,
+                            children: [
+                              _badgeChip(
+                                '↑ Positive',
+                                FinSpanTheme.primaryGreen,
+                              ),
+                              _badgeChip('↓ Negative', Colors.red),
+                            ],
+                          ),
                         ],
                       ),
                     ),
@@ -709,54 +796,12 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
       ),
       child: Text(
         label,
-        style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.bold),
+        style: TextStyle(
+          fontSize: 10,
+          color: color,
+          fontWeight: FontWeight.bold,
+        ),
       ),
-    );
-  }
-
-  void _showMonteCarloPopup() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return Container(
-          height: MediaQuery.of(context).size.height * 0.9,
-          decoration: const BoxDecoration(
-            color: FinSpanTheme.backgroundLight,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: Column(
-            children: [
-              // Handle bump
-              Container(
-                margin: const EdgeInsets.symmetric(vertical: 12),
-                height: 4,
-                width: 40,
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    children: [
-                      _buildMonteCarloHeader(),
-                      const SizedBox(height: 24),
-                      _buildMonteCarloSlider(widget.result!.monteCarlo!),
-                      const SizedBox(height: 24),
-                      _buildMonteCarloSection(),
-                      const SizedBox(height: 40),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 
@@ -904,7 +949,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                   ),
                   TextSpan(
                     text:
-                        'Final portfolio LKR ${(val / 1000000).toStringAsFixed(1)}M',
+                        'Final portfolio \$${(val / 1000000).toStringAsFixed(1)}M',
                   ),
                 ],
               ),
@@ -1224,7 +1269,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
             Expanded(
               child: _buildStatCard(
                 'Current Savings',
-                'LKR ${(current / 1000000).toStringAsFixed(1)}M',
+                '\$${(current / 1000000).toStringAsFixed(1)}M',
                 Icons.account_balance_wallet,
                 FinSpanTheme.primaryGreen,
               ),
@@ -1233,7 +1278,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
             Expanded(
               child: _buildStatCard(
                 '10Y Projection',
-                'LKR ${(projected / 1000000).toStringAsFixed(1)}M',
+                '\$${(projected / 1000000).toStringAsFixed(1)}M',
                 Icons.trending_up,
                 Colors.blue,
               ),
@@ -1246,7 +1291,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
             Expanded(
               child: _buildStatCard(
                 'Annual Contrib.',
-                'LKR ${(contribution / 1000).toStringAsFixed(0)}K',
+                '\$${(contribution / 1000).toStringAsFixed(0)}K',
                 Icons.savings,
                 Colors.orange,
               ),
@@ -1362,13 +1407,19 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                   label: const Text('Luck', style: TextStyle(fontSize: 12)),
                   style: TextButton.styleFrom(
                     foregroundColor: FinSpanTheme.primaryGreen,
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                   ),
                 )
               else
                 TextButton(
                   onPressed: () => setState(() => _selectedIndex = 2),
-                  child: const Text('Simulator →', style: TextStyle(fontSize: 12)),
+                  child: const Text(
+                    'Simulator →',
+                    style: TextStyle(fontSize: 12),
+                  ),
                 ),
             ],
           ),
@@ -1403,7 +1454,9 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                   if (v == 0) return ChartAxisLabel(r'$0', null);
                   if (v >= 1000000) {
                     return ChartAxisLabel(
-                        r'$' + '${(v / 1000000).toStringAsFixed(1)}M', null);
+                      r'$' + '${(v / 1000000).toStringAsFixed(1)}M',
+                      null,
+                    );
                   }
                   return ChartAxisLabel(r'$' + '${(v / 1000).toInt()}K', null);
                 },
@@ -1485,7 +1538,10 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
             children: _homeEnableMonteCarlo
                 ? [
                     _mcLegendDot('Your Plan', const Color(0xFF6366F1)),
-                    _mcLegendDot('90th Pct', FinSpanTheme.primaryGreen.withValues(alpha: 0.8)),
+                    _mcLegendDot(
+                      '90th Pct',
+                      FinSpanTheme.primaryGreen.withValues(alpha: 0.8),
+                    ),
                     _mcLegendDot('Median', const Color(0xFF8B5CF6)),
                     _mcLegendDot('10th Pct', Colors.red.withValues(alpha: 0.8)),
                   ]
@@ -1690,9 +1746,9 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
             label: 'Simulator',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline_rounded),
-            activeIcon: Icon(Icons.person_rounded),
-            label: 'Profile',
+            icon: Icon(Icons.tune_outlined),
+            activeIcon: Icon(Icons.tune_rounded),
+            label: 'My Plan',
           ),
         ],
       ),
@@ -1718,7 +1774,6 @@ class _ReturnBar {
   final double returnPct;
   const _ReturnBar(this.age, this.returnPct);
 }
-
 
 class _ReturnData {
   _ReturnData(this.year, this.percentChange);

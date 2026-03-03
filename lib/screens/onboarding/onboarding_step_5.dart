@@ -18,6 +18,7 @@ class OnboardingStep5Screen extends StatefulWidget {
 
 class _OnboardingStep5ScreenState extends State<OnboardingStep5Screen> {
   late TextEditingController _totalBalanceController;
+  late TextEditingController _spouseTotalBalanceController;
   late TextEditingController _tradIRAController;
   late TextEditingController _rothIRAController;
   late TextEditingController _brokerageController;
@@ -25,9 +26,6 @@ class _OnboardingStep5ScreenState extends State<OnboardingStep5Screen> {
   late TextEditingController _spouseTradIRAController;
   late TextEditingController _spouseRothIRAController;
   late TextEditingController _spouseBrokerageController;
-
-  late TextEditingController _fourOneKContribController;
-  late TextEditingController _rothIRAContribController;
 
   @override
   void initState() {
@@ -39,6 +37,9 @@ class _OnboardingStep5ScreenState extends State<OnboardingStep5Screen> {
                   widget.data.taxFreeSavings)
               .toInt()
               .toString(),
+    );
+    _spouseTotalBalanceController = TextEditingController(
+      text: widget.data.spouseTotalSavings.toInt().toString(),
     );
     _tradIRAController = TextEditingController(
       text: widget.data.taxDeferredSavings.toInt().toString(),
@@ -60,13 +61,6 @@ class _OnboardingStep5ScreenState extends State<OnboardingStep5Screen> {
       text: widget.data.spouseTaxableSavings.toInt().toString(),
     );
 
-    _fourOneKContribController = TextEditingController(
-      text: widget.data.userFourOneKContrib.toInt().toString(),
-    );
-    _rothIRAContribController = TextEditingController(
-      text: widget.data.userRothIRAContrib.toInt().toString(),
-    );
-
     // Listeners for simple mode
     _totalBalanceController.addListener(() {
       final total =
@@ -77,6 +71,19 @@ class _OnboardingStep5ScreenState extends State<OnboardingStep5Screen> {
         widget.data.taxDeferredSavings = total;
         widget.data.taxableSavings = 0;
         widget.data.taxFreeSavings = 0;
+      }
+    });
+
+    _spouseTotalBalanceController.addListener(() {
+      final total =
+          double.tryParse(
+            _spouseTotalBalanceController.text.replaceAll(',', ''),
+          ) ??
+          0;
+      if (!widget.data.showDetailedBalances) {
+        widget.data.spouseTaxDeferredSavings = total;
+        widget.data.spouseTaxableSavings = 0;
+        widget.data.spouseTaxFreeSavings = 0;
       }
     });
   }
@@ -90,8 +97,6 @@ class _OnboardingStep5ScreenState extends State<OnboardingStep5Screen> {
     _spouseTradIRAController.dispose();
     _spouseRothIRAController.dispose();
     _spouseBrokerageController.dispose();
-    _fourOneKContribController.dispose();
-    _rothIRAContribController.dispose();
     super.dispose();
   }
 
@@ -133,8 +138,19 @@ class _OnboardingStep5ScreenState extends State<OnboardingStep5Screen> {
                       prefix: "\$ ",
                       hint: "230,000",
                       label: "Your Total Savings",
-                      subLabel: "Sum of your accounts below",
+                      subLabel: "All your retirement accounts combined",
                     ),
+
+                    if (widget.data.includePartner) ...[
+                      const SizedBox(height: 16),
+                      _buildInputBox(
+                        controller: _spouseTotalBalanceController,
+                        prefix: "\$ ",
+                        hint: "0",
+                        label: "Spouse Total Savings",
+                        subLabel: "All spouse's retirement accounts combined",
+                      ),
+                    ],
 
                     const SizedBox(height: 24),
                     _buildToggleTile(
@@ -187,68 +203,62 @@ class _OnboardingStep5ScreenState extends State<OnboardingStep5Screen> {
                     const SizedBox(height: 32),
                     _buildSectionHeader(
                       Icons.trending_up,
-                      "Annual Contributions",
+                      "Annual 401(k) Contributions",
+                      badge: "✨ NEW",
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      "Set your contribution rates. The system will automatically optimize Roth vs. Traditional based on your tax bracket.",
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: FinSpanTheme.bodyGray,
+                      ),
                     ),
                     const SizedBox(height: 16),
-                    _buildContribNotice(),
+                    _buildSmartOptimizationCard(),
                     const SizedBox(height: 24),
 
-                    _buildInputBox(
-                      controller: _fourOneKContribController,
-                      prefix: "\$ ",
-                      hint: "20,000",
-                      label: "Your 401(k) Contribution",
-                      helper:
-                          "${((widget.data.userFourOneKContrib / 24500) * 100).toInt()}% of limit",
-                      onHelperAction: () {
-                        setState(() {
-                          widget.data.userFourOneKContrib = 24500;
-                          _fourOneKContribController.text = "24,500";
-                        });
+                    // User Contributions
+                    _buildPersonContributions(
+                      title: "Your 401(k) Contributions",
+                      salary: widget.data.currentSalary,
+                      contribRate: widget.data.userContribRate,
+                      matchRate: widget.data.userEmployerMatchRate,
+                      contribType: widget.data.userContribType,
+                      onContribRateChanged: (val) {
+                        setState(() => widget.data.userContribRate = val);
                       },
-                      helperAction: "Max Out (\$24,500)",
-                      onChanged: (val) => widget.data.userFourOneKContrib = val,
-                    ),
-                    const SizedBox(height: 16),
-                    _buildInputBox(
-                      controller: _rothIRAContribController,
-                      prefix: "\$ ",
-                      hint: "6,000",
-                      label: "Your Roth IRA Contribution",
-                      subLabel: "Annual contribution amount",
-                      onChanged: (val) => widget.data.userRothIRAContrib = val,
+                      onMatchRateChanged: (val) {
+                        setState(() => widget.data.userEmployerMatchRate = val);
+                      },
+                      onContribTypeChanged: (val) {
+                        setState(() => widget.data.userContribType = val);
+                      },
                     ),
 
                     if (widget.data.includePartner) ...[
                       const SizedBox(height: 24),
-                      _buildSectionLabel("Spouse's Contributions"),
-                      const SizedBox(height: 16),
-                      _buildInputBox(
-                        controller: TextEditingController(
-                          text: widget.data.spouseFourOneKContrib
-                              .toInt()
-                              .toString(),
-                        ),
-                        prefix: "\$ ",
-                        hint: "0",
-                        label: "Spouse 401(k) Contribution",
-                        onChanged: (val) =>
-                            widget.data.spouseFourOneKContrib = val,
-                      ),
-                      const SizedBox(height: 16),
-                      _buildInputBox(
-                        controller: TextEditingController(
-                          text: widget.data.spouseRothIRAContrib
-                              .toInt()
-                              .toString(),
-                        ),
-                        prefix: "\$ ",
-                        hint: "0",
-                        label: "Spouse Roth IRA Contribution",
-                        onChanged: (val) =>
-                            widget.data.spouseRothIRAContrib = val,
+                      _buildPersonContributions(
+                        title: "Spouse 401(k) Contributions",
+                        salary: widget.data.spouseSalary,
+                        contribRate: widget.data.spouseContribRate,
+                        matchRate: widget.data.spouseEmployerMatchRate,
+                        contribType: widget.data.spouseContribType,
+                        onContribRateChanged: (val) {
+                          setState(() => widget.data.spouseContribRate = val);
+                        },
+                        onMatchRateChanged: (val) {
+                          setState(
+                            () => widget.data.spouseEmployerMatchRate = val,
+                          );
+                        },
+                        onContribTypeChanged: (val) {
+                          setState(() => widget.data.spouseContribType = val);
+                        },
                       ),
                     ],
+
+                    const SizedBox(height: 24),
+                    _buildCombinedSummary(),
 
                     const SizedBox(height: 32),
                     _buildSectionHeader(Icons.bar_chart, "Investment Returns"),
@@ -296,15 +306,33 @@ class _OnboardingStep5ScreenState extends State<OnboardingStep5Screen> {
     );
   }
 
-  Widget _buildSectionHeader(IconData icon, String title) {
+  Widget _buildSectionHeader(IconData icon, String title, {String? badge}) {
     return Row(
       children: [
         Icon(icon, size: 20, color: FinSpanTheme.primaryGreen),
         const SizedBox(width: 8),
         Text(
           title,
-          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13),
+          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
         ),
+        if (badge != null) ...[
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.amber.shade100,
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              badge,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: Colors.amber.shade900,
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -499,42 +527,6 @@ class _OnboardingStep5ScreenState extends State<OnboardingStep5Screen> {
     );
   }
 
-  Widget _buildContribNotice() {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.amber.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.warning_amber_rounded,
-            color: Colors.amber,
-            size: 20,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  "Coming Soon",
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                ),
-                Text(
-                  "Annual contributions are not yet supported by the simulation engine... for now, enter current balances.",
-                  style: TextStyle(fontSize: 11, color: FinSpanTheme.bodyGray),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildReturnTip() {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -623,6 +615,361 @@ class _OnboardingStep5ScreenState extends State<OnboardingStep5Screen> {
           onChanged: (val) => setState(() => widget.data.expectedReturn = val),
         ),
       ],
+    );
+  }
+
+  Widget _buildSmartOptimizationCard() {
+    final isSmart = widget.data.smartTaxOptimization;
+    return GestureDetector(
+      onTap: () {
+        setState(() => widget.data.smartTaxOptimization = !isSmart);
+      },
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isSmart
+              ? FinSpanTheme.primaryGreen.withValues(alpha: 0.05)
+              : Colors.grey.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSmart
+                ? FinSpanTheme.primaryGreen.withValues(alpha: 0.2)
+                : FinSpanTheme.dividerColor,
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.auto_awesome,
+              color: isSmart ? FinSpanTheme.primaryGreen : Colors.grey,
+              size: 20,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        "Smart Tax Optimization",
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                          color: isSmart ? Colors.black : Colors.grey.shade700,
+                        ),
+                      ),
+                      Switch(
+                        value: isSmart,
+                        activeTrackColor: FinSpanTheme.primaryGreen,
+                        onChanged: (val) {
+                          setState(
+                            () => widget.data.smartTaxOptimization = val,
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                  Text(
+                    isSmart
+                        ? "✓ System will choose Roth vs Traditional based on your tax bracket"
+                        : "Manual mode: You control Roth vs Traditional selection below",
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isSmart ? FinSpanTheme.bodyGray : Colors.grey,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPersonContributions({
+    required String title,
+    required double salary,
+    required double contribRate,
+    required double matchRate,
+    required String contribType,
+    required Function(double) onContribRateChanged,
+    required Function(double) onMatchRateChanged,
+    required Function(String) onContribTypeChanged,
+  }) {
+    const double limit = 24500;
+    final contribDollar = salary * (contribRate / 100);
+    final matchDollar = salary * (matchRate / 100);
+    final totalDollar = contribDollar + matchDollar;
+    final limitPercent = ((contribDollar / limit) * 100).clamp(0, 100).toInt();
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: FinSpanTheme.backgroundLight,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: FinSpanTheme.dividerColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+          ),
+          const SizedBox(height: 16),
+
+          if (!widget.data.smartTaxOptimization) ...[
+            _buildTypeSelector(contribType, onContribTypeChanged),
+            const SizedBox(height: 24),
+          ],
+
+          // Contribution Rate
+          _buildRateSliderRow(
+            label: "Your Contribution Rate",
+            value: contribRate,
+            min: 0,
+            max: 100,
+            divisions: 20,
+            onChanged: onContribRateChanged,
+          ),
+          Text(
+            "Annual contribution: \$${_formatC(contribDollar)} ($limitPercent% of \$24,500 limit)",
+            style: TextStyle(fontSize: 12, color: FinSpanTheme.bodyGray),
+          ),
+          const SizedBox(height: 24),
+
+          // Employer Match Rate
+          _buildRateSliderRow(
+            label: "Employer Match Rate",
+            value: matchRate,
+            min: 0,
+            max: 15,
+            divisions: 15,
+            onChanged: onMatchRateChanged,
+          ),
+          Text(
+            "Employer match: \$${_formatC(matchDollar)}/year 💰",
+            style: TextStyle(fontSize: 12, color: FinSpanTheme.bodyGray),
+          ),
+
+          const Divider(height: 32),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "Total Annual Contribution:",
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    "= \$${_formatC(contribDollar)} (your) + \$${_formatC(matchDollar)} (match)",
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: FinSpanTheme.bodyGray,
+                    ),
+                  ),
+                ],
+              ),
+              Text(
+                "\$${_formatC(totalDollar)}",
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  color: FinSpanTheme.primaryGreen,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRateSliderRow({
+    required String label,
+    required double value,
+    required double min,
+    required double max,
+    required int divisions,
+    required Function(double) onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: FinSpanTheme.primaryGreen,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                "${value.toInt()}%",
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ],
+        ),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            activeTrackColor: FinSpanTheme.primaryGreen,
+            inactiveTrackColor: FinSpanTheme.dividerColor,
+            thumbColor: Colors.white,
+            trackHeight: 4,
+          ),
+          child: Slider(
+            value: value,
+            min: min,
+            max: max,
+            divisions: divisions,
+            onChanged: onChanged,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTypeSelector(String currentType, Function(String) onChanged) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          "Contribution Type",
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          height: 40,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: FinSpanTheme.dividerColor),
+          ),
+          child: Row(
+            children: [
+              _buildTypeOption(
+                "Traditional",
+                "Pre-tax",
+                currentType == "Traditional",
+                () => onChanged("Traditional"),
+              ),
+              Container(width: 1, color: FinSpanTheme.dividerColor),
+              _buildTypeOption(
+                "Roth",
+                "After-tax",
+                currentType == "Roth",
+                () => onChanged("Roth"),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          currentType == "Traditional"
+              ? "Tax deduction now, pay taxes later"
+              : "Pay taxes now, tax-free growth and withdrawals",
+          style: TextStyle(fontSize: 11, color: FinSpanTheme.bodyGray),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTypeOption(
+    String title,
+    String sub,
+    bool isSelected,
+    VoidCallback onTap,
+  ) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          decoration: BoxDecoration(
+            color: isSelected ? FinSpanTheme.primaryGreen : Colors.transparent,
+            borderRadius: BorderRadius.circular(7),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  color: isSelected ? Colors.white : Colors.black,
+                ),
+              ),
+              Text(
+                sub,
+                style: TextStyle(
+                  fontSize: 9,
+                  color: isSelected ? Colors.white70 : Colors.grey,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCombinedSummary() {
+    final double totalHousehold = widget.data.totalHouseholdContribPerYear;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: FinSpanTheme.charcoal,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          const Text(
+            "Combined Household Contributions",
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            "\$${_formatC(totalHousehold)}",
+            style: const TextStyle(
+              color: FinSpanTheme.vibrantGreen,
+              fontSize: 28,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            "per year going into retirement accounts",
+            style: TextStyle(color: Colors.white54, fontSize: 11),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatC(double val) {
+    return val.toInt().toString().replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (Match m) => '${m[1]},',
     );
   }
 }

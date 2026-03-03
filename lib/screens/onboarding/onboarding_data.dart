@@ -102,6 +102,37 @@ class OnboardingData {
   double spouseFourOneKContrib = 0;
   double spouseRothIRAContrib = 0;
 
+  // 401(k) contribution and employer match rates (as % of salary, 0–100)
+  double userContribRate = 15.0; // % of salary
+  double userEmployerMatchRate = 5.0; // % employer matches
+  double spouseContribRate = 15.0;
+  double spouseEmployerMatchRate = 5.0;
+
+  // Tax Optimization
+  bool smartTaxOptimization = true;
+  String userContribType = 'Traditional'; // 'Traditional' or 'Roth'
+  String spouseContribType = 'Traditional';
+
+  // Computed per-rate using salary; kept in sync when user edits sliders
+  double get userFourOneKContribComputed =>
+      currentSalary * (userContribRate / 100);
+  double get userEmployerMatchDollar =>
+      currentSalary * (userEmployerMatchRate / 100);
+  double get spouseFourOneKContribComputed =>
+      spouseSalary * (spouseContribRate / 100);
+  double get spouseEmployerMatchDollar =>
+      spouseSalary * (spouseEmployerMatchRate / 100);
+  double get totalHouseholdContribPerYear =>
+      userFourOneKContribComputed +
+      userEmployerMatchDollar +
+      (includePartner
+          ? spouseFourOneKContribComputed + spouseEmployerMatchDollar
+          : 0);
+
+  // Spouse simple total savings
+  double get spouseTotalSavings =>
+      spouseTaxDeferredSavings + spouseTaxableSavings + spouseTaxFreeSavings;
+
   // Other income
   double pensionIncome = 0;
   double otherPassiveIncome = 0;

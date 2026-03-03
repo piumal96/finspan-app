@@ -658,7 +658,7 @@ class _DetailedResultsScreenState extends State<DetailedResultsScreen> {
             leading: const Icon(Icons.account_balance_wallet_outlined),
             title: const Text('Ending Wealth'),
             trailing: Text(
-              'LKR ${(_result!.endingWealth / 1000000).toStringAsFixed(1)}M',
+              '\$${(_result!.endingWealth / 1000000).toStringAsFixed(1)}M',
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
@@ -667,7 +667,7 @@ class _DetailedResultsScreenState extends State<DetailedResultsScreen> {
             leading: const Icon(Icons.trending_up),
             title: const Text('Peak Wealth'),
             trailing: Text(
-              'LKR ${(_result!.standardResults.map((y) => y.total).reduce((a, b) => a > b ? a : b) / 1000000).toStringAsFixed(1)}M',
+              '\$${(_result!.standardResults.map((y) => y.total).reduce((a, b) => a > b ? a : b) / 1000000).toStringAsFixed(1)}M',
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
