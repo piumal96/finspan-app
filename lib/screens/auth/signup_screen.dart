@@ -4,82 +4,106 @@ import '../../theme/finspan_theme.dart';
 import '../../services/auth_service.dart';
 import '../../widgets/finspan_card.dart';
 import '../onboarding/onboarding_wrapper.dart';
-import '../dashboard/main_dashboard.dart';
-import '../../services/user_service.dart';
 import '../../utils/response_utils.dart';
-import 'signup_screen.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
-class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+class SignUpScreen extends StatefulWidget {
+  const SignUpScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  State<SignUpScreen> createState() => _SignUpScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _SignUpScreenState extends State<SignUpScreen> {
   final AuthService _authService = AuthService();
   final _formKey = GlobalKey<FormState>();
+
+  final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
+
+  final _nameFocus = FocusNode();
   final _emailFocus = FocusNode();
   final _passwordFocus = FocusNode();
+  final _confirmPasswordFocus = FocusNode();
 
   bool _isLoading = false;
-  bool _isGoogleLoading = false;
   bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
+
+  // Password strength
+  int _passwordStrength = 0; // 0–4
+
+  @override
+  void initState() {
+    super.initState();
+    _passwordController.addListener(_updatePasswordStrength);
+  }
 
   @override
   void dispose() {
+    _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    _nameFocus.dispose();
     _emailFocus.dispose();
     _passwordFocus.dispose();
+    _confirmPasswordFocus.dispose();
     super.dispose();
   }
 
-  // ─── Navigation helper ────────────────────────────────────────────────────
+  void _updatePasswordStrength() {
+    final p = _passwordController.text;
+    int strength = 0;
+    if (p.length >= 8) strength++;
+    if (RegExp(r'[A-Z]').hasMatch(p)) strength++;
+    if (RegExp(r'[0-9]').hasMatch(p)) strength++;
+    if (RegExp(r'[!@#\$%^&*(),.?":{}|<>]').hasMatch(p)) strength++;
+    setState(() => _passwordStrength = strength);
+  }
 
-  Future<void> _navigateAfterLogin(UserCredential credential) async {
-    if (!context.mounted) return;
-
-    final UserService userService = UserService();
-    final hasData = await userService.hasCompletedOnboarding();
-    final userData = hasData ? await userService.getUserProfile() : null;
-
-    if (!context.mounted) return;
-
-    ResponseUtils.showPremiumSnackBar(
-      context,
-      'Welcome back, ${credential.user?.displayName ?? credential.user?.email ?? "User"}!',
-      isSuccess: true,
-    );
-
-    if (hasData && userData != null) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => MainDashboardScreen(data: userData),
-        ),
-      );
-    } else {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const OnboardingWrapper()),
-      );
+  Color get _strengthColor {
+    switch (_passwordStrength) {
+      case 1:
+        return Colors.red;
+      case 2:
+        return Colors.orange;
+      case 3:
+        return Colors.amber;
+      case 4:
+        return FinSpanTheme.primaryGreen;
+      default:
+        return FinSpanTheme.dividerColor;
     }
   }
 
-  // ─── Email / Password Sign-In ─────────────────────────────────────────────
+  String get _strengthLabel {
+    switch (_passwordStrength) {
+      case 1:
+        return 'Weak';
+      case 2:
+        return 'Fair';
+      case 3:
+        return 'Good';
+      case 4:
+        return 'Strong';
+      default:
+        return '';
+    }
+  }
 
-  Future<void> _handleEmailSignIn() async {
+  // ─── Register ─────────────────────────────────────────────────────────────
+
+  Future<void> _handleSignUp() async {
     if (!_formKey.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
 
     if (!_authService.isAvailable) {
       ResponseUtils.showPremiumSnackBar(
         context,
-        'Firebase is not configured. Please add the required config files.',
+        'Firebase is not configured.',
         isError: true,
       );
       return;
@@ -87,11 +111,29 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() => _isLoading = true);
     try {
-      final credential = await _authService.signInWithEmailAndPassword(
+      await _authService.createUserWithEmailAndPassword(
         email: _emailController.text,
         password: _passwordController.text,
+        displayName: _nameController.text,
       );
-      await _navigateAfterLogin(credential);
+
+      if (context.mounted) {
+        ResponseUtils.showPremiumSnackBar(
+          context,
+          'Account created! Check your email to verify your address.',
+          isSuccess: true,
+        );
+
+        // Short delay so user can read the success message
+        await Future.delayed(const Duration(milliseconds: 600));
+
+        if (context.mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const OnboardingWrapper()),
+          );
+        }
+      }
     } on FirebaseAuthException catch (e) {
       if (context.mounted) {
         ResponseUtils.showPremiumSnackBar(
@@ -113,137 +155,14 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // ─── Google Sign-In ───────────────────────────────────────────────────────
-
-  Future<void> _handleGoogleSignIn() async {
-    if (!_authService.isAvailable) {
-      ResponseUtils.showPremiumSnackBar(
-        context,
-        'Firebase is not configured. Please add the required config files.',
-        isError: true,
-      );
-      return;
-    }
-
-    setState(() => _isGoogleLoading = true);
-    try {
-      final userCredential = await _authService.signInWithGoogle();
-      if (userCredential != null) {
-        await _navigateAfterLogin(userCredential);
-      }
-    } on FirebaseAuthException catch (e) {
-      if (context.mounted) {
-        ResponseUtils.showPremiumSnackBar(
-          context,
-          AuthService.getFriendlyAuthError(e),
-          isError: true,
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ResponseUtils.showPremiumSnackBar(
-          context,
-          'Google Sign-In failed. Please try again.',
-          isError: true,
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isGoogleLoading = false);
-    }
-  }
-
-  // ─── Forgot Password ──────────────────────────────────────────────────────
-
-  void _handleForgotPassword() {
-    final emailController = TextEditingController(text: _emailController.text);
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          'Reset Password',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Enter your email address and we\'ll send you a link to reset your password.',
-              style: TextStyle(color: FinSpanTheme.bodyGray, fontSize: 13),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: emailController,
-              keyboardType: TextInputType.emailAddress,
-              autofillHints: const [AutofillHints.email],
-              decoration: InputDecoration(
-                labelText: 'Email Address',
-                prefixIcon: const Icon(LucideIcons.mail, size: 20),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: FinSpanTheme.bodyGray),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final email = emailController.text.trim();
-              if (email.isEmpty || !email.contains('@')) {
-                ResponseUtils.showPremiumSnackBar(
-                  ctx,
-                  'Please enter a valid email address.',
-                  isError: true,
-                );
-                return;
-              }
-              Navigator.pop(ctx);
-              try {
-                await _authService.sendPasswordResetEmail(email: email);
-                if (context.mounted) {
-                  ResponseUtils.showPremiumSnackBar(
-                    context,
-                    'Password reset email sent! Check your inbox.',
-                    isSuccess: true,
-                  );
-                }
-              } on FirebaseAuthException catch (e) {
-                if (context.mounted) {
-                  ResponseUtils.showPremiumSnackBar(
-                    context,
-                    AuthService.getFriendlyAuthError(e),
-                    isError: true,
-                  );
-                }
-              }
-            },
-            child: const Text('Send Reset Link'),
-          ),
-        ],
-      ),
-    );
-  }
-
   // ─── Build ────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    final bool anyLoading = _isLoading || _isGoogleLoading;
-
     return Scaffold(
       backgroundColor: FinSpanTheme.backgroundLight,
       body: Stack(
         children: [
-          // Subtle background gradient
           Positioned.fill(
             child: Container(
               decoration: BoxDecoration(
@@ -268,22 +187,21 @@ class _LoginScreenState extends State<LoginScreen> {
                   leading: const BackButton(color: FinSpanTheme.charcoal),
                   pinned: true,
                 ),
-                SliverFillRemaining(
-                  hasScrollBody: false,
+                SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 24.0),
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const SizedBox(height: 8),
+
                         // Title
                         Hero(
                           tag: 'auth_title',
                           child: Material(
                             color: Colors.transparent,
                             child: Text(
-                              'Welcome Back',
+                              'Create Account',
                               style: Theme.of(context).textTheme.displaySmall
                                   ?.copyWith(
                                     fontWeight: FontWeight.w800,
@@ -295,7 +213,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 10),
                         Text(
-                          'Securely sync your financial roadmap across all your devices.',
+                          'Start planning your financial future in minutes.',
                           style: Theme.of(context).textTheme.bodyLarge
                               ?.copyWith(
                                 color: FinSpanTheme.bodyGray,
@@ -312,20 +230,48 @@ class _LoginScreenState extends State<LoginScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                // Google button
-                                _buildGoogleButton(anyLoading),
-                                const SizedBox(height: 24),
-                                _buildDivider(),
-                                const SizedBox(height: 24),
+                                // Full Name
+                                TextFormField(
+                                  controller: _nameController,
+                                  focusNode: _nameFocus,
+                                  keyboardType: TextInputType.name,
+                                  textCapitalization: TextCapitalization.words,
+                                  autofillHints: const [AutofillHints.name],
+                                  textInputAction: TextInputAction.next,
+                                  enabled: !_isLoading,
+                                  onFieldSubmitted: (_) => FocusScope.of(
+                                    context,
+                                  ).requestFocus(_emailFocus),
+                                  decoration: const InputDecoration(
+                                    labelText: 'Full Name',
+                                    hintText: 'John Doe',
+                                    prefixIcon: Icon(
+                                      LucideIcons.user,
+                                      size: 20,
+                                    ),
+                                  ),
+                                  validator: (value) {
+                                    if (value == null || value.trim().isEmpty) {
+                                      return 'Full name is required.';
+                                    }
+                                    if (value.trim().length < 2) {
+                                      return 'Name must be at least 2 characters.';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                                const SizedBox(height: 16),
 
-                                // Email field
+                                // Email
                                 TextFormField(
                                   controller: _emailController,
                                   focusNode: _emailFocus,
                                   keyboardType: TextInputType.emailAddress,
-                                  autofillHints: const [AutofillHints.email],
+                                  autofillHints: const [
+                                    AutofillHints.newUsername,
+                                  ],
                                   textInputAction: TextInputAction.next,
-                                  enabled: !anyLoading,
+                                  enabled: !_isLoading,
                                   onFieldSubmitted: (_) => FocusScope.of(
                                     context,
                                   ).requestFocus(_passwordFocus),
@@ -352,15 +298,19 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                                 const SizedBox(height: 16),
 
-                                // Password field
+                                // Password
                                 TextFormField(
                                   controller: _passwordController,
                                   focusNode: _passwordFocus,
                                   obscureText: _obscurePassword,
-                                  autofillHints: const [AutofillHints.password],
-                                  textInputAction: TextInputAction.done,
-                                  enabled: !anyLoading,
-                                  onFieldSubmitted: (_) => _handleEmailSignIn(),
+                                  autofillHints: const [
+                                    AutofillHints.newPassword,
+                                  ],
+                                  textInputAction: TextInputAction.next,
+                                  enabled: !_isLoading,
+                                  onFieldSubmitted: (_) => FocusScope.of(
+                                    context,
+                                  ).requestFocus(_confirmPasswordFocus),
                                   decoration: InputDecoration(
                                     labelText: 'Password',
                                     hintText: '••••••••',
@@ -386,49 +336,77 @@ class _LoginScreenState extends State<LoginScreen> {
                                     if (value == null || value.isEmpty) {
                                       return 'Password is required.';
                                     }
-                                    if (value.length < 6) {
-                                      return 'Password must be at least 6 characters.';
+                                    if (value.length < 8) {
+                                      return 'Password must be at least 8 characters.';
+                                    }
+                                    if (!RegExp(r'[A-Za-z]').hasMatch(value)) {
+                                      return 'Password must include at least one letter.';
+                                    }
+                                    if (!RegExp(r'[0-9]').hasMatch(value)) {
+                                      return 'Password must include at least one number.';
                                     }
                                     return null;
                                   },
                                 ),
-                                const SizedBox(height: 8),
 
-                                // Forgot password
-                                Align(
-                                  alignment: Alignment.centerRight,
-                                  child: TextButton(
-                                    onPressed: anyLoading
-                                        ? null
-                                        : _handleForgotPassword,
-                                    style: TextButton.styleFrom(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 4,
-                                        vertical: 4,
-                                      ),
-                                      minimumSize: Size.zero,
-                                      tapTargetSize:
-                                          MaterialTapTargetSize.shrinkWrap,
+                                // Password strength indicator
+                                if (_passwordController.text.isNotEmpty) ...[
+                                  const SizedBox(height: 8),
+                                  _buildPasswordStrengthBar(),
+                                ],
+                                const SizedBox(height: 16),
+
+                                // Confirm Password
+                                TextFormField(
+                                  controller: _confirmPasswordController,
+                                  focusNode: _confirmPasswordFocus,
+                                  obscureText: _obscureConfirmPassword,
+                                  autofillHints: const [
+                                    AutofillHints.newPassword,
+                                  ],
+                                  textInputAction: TextInputAction.done,
+                                  enabled: !_isLoading,
+                                  onFieldSubmitted: (_) => _handleSignUp(),
+                                  decoration: InputDecoration(
+                                    labelText: 'Confirm Password',
+                                    hintText: '••••••••',
+                                    prefixIcon: const Icon(
+                                      LucideIcons.lock,
+                                      size: 20,
                                     ),
-                                    child: const Text(
-                                      'Forgot password?',
-                                      style: TextStyle(
-                                        color: FinSpanTheme.primaryGreen,
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
+                                    suffixIcon: IconButton(
+                                      icon: Icon(
+                                        _obscureConfirmPassword
+                                            ? Icons.visibility_outlined
+                                            : Icons.visibility_off_outlined,
+                                        size: 20,
+                                        color: FinSpanTheme.bodyGray,
+                                      ),
+                                      onPressed: () => setState(
+                                        () => _obscureConfirmPassword =
+                                            !_obscureConfirmPassword,
                                       ),
                                     ),
                                   ),
+                                  validator: (value) {
+                                    if (value == null || value.isEmpty) {
+                                      return 'Please confirm your password.';
+                                    }
+                                    if (value != _passwordController.text) {
+                                      return 'Passwords do not match.';
+                                    }
+                                    return null;
+                                  },
                                 ),
-                                const SizedBox(height: 24),
+                                const SizedBox(height: 28),
 
-                                // Sign-In button
+                                // Create Account button
                                 SizedBox(
                                   width: double.infinity,
                                   child: ElevatedButton(
-                                    onPressed: anyLoading
+                                    onPressed: _isLoading
                                         ? null
-                                        : _handleEmailSignIn,
+                                        : _handleSignUp,
                                     style: ElevatedButton.styleFrom(
                                       padding: const EdgeInsets.symmetric(
                                         vertical: 16,
@@ -457,7 +435,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                             )
                                           : const Text(
                                               key: ValueKey('label'),
-                                              'Sign In Securely',
+                                              'Create Account',
                                               style: TextStyle(
                                                 fontSize: 15,
                                                 fontWeight: FontWeight.bold,
@@ -466,14 +444,18 @@ class _LoginScreenState extends State<LoginScreen> {
                                     ),
                                   ),
                                 ),
+
+                                const SizedBox(height: 20),
+                                // Password requirements hint
+                                _buildPasswordRequirements(),
                               ],
                             ),
                           ),
                         ),
 
                         const SizedBox(height: 28),
-                        _buildFooter(anyLoading),
-                        const SizedBox(height: 24),
+                        _buildFooter(),
+                        const SizedBox(height: 32),
                       ],
                     ),
                   ),
@@ -486,89 +468,102 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _buildGoogleButton(bool disabled) {
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton(
-        onPressed: disabled ? null : _handleGoogleSignIn,
-        style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          side: BorderSide(
-            color: FinSpanTheme.primaryGreen.withValues(alpha: 0.3),
-            width: 1.5,
-          ),
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 200),
-          child: _isGoogleLoading
-              ? const SizedBox(
-                  key: ValueKey('gload'),
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      FinSpanTheme.primaryGreen,
-                    ),
-                  ),
-                )
-              : Row(
-                  key: const ValueKey('gbtn'),
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Image.network(
-                      'https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg',
-                      width: 20,
-                      height: 20,
-                      errorBuilder: (c, e, s) =>
-                          const Icon(LucideIcons.logIn, size: 20),
-                    ),
-                    const SizedBox(width: 12),
-                    const Text(
-                      'Continue with Google',
-                      style: TextStyle(
-                        color: FinSpanTheme.charcoal,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                      ),
-                    ),
-                  ],
-                ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDivider() {
-    return const Row(
+  Widget _buildPasswordStrengthBar() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: Divider(thickness: 1, color: FinSpanTheme.dividerColor),
+        Row(
+          children: List.generate(4, (i) {
+            return Expanded(
+              child: Container(
+                margin: EdgeInsets.only(right: i < 3 ? 4 : 0),
+                height: 4,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(2),
+                  color: i < _passwordStrength
+                      ? _strengthColor
+                      : FinSpanTheme.dividerColor,
+                ),
+              ),
+            );
+          }),
         ),
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16.0),
-          child: Text(
-            'OR',
+        if (_strengthLabel.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            'Password strength: $_strengthLabel',
             style: TextStyle(
-              color: FinSpanTheme.bodyGray,
-              fontSize: 12,
+              fontSize: 11,
+              color: _strengthColor,
               fontWeight: FontWeight.w600,
-              letterSpacing: 1.2,
             ),
           ),
-        ),
-        Expanded(
-          child: Divider(thickness: 1, color: FinSpanTheme.dividerColor),
-        ),
+        ],
       ],
     );
   }
 
-  Widget _buildFooter(bool disabled) {
+  Widget _buildPasswordRequirements() {
+    final p = _passwordController.text;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: FinSpanTheme.backgroundLight,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: FinSpanTheme.dividerColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Password must contain:',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: FinSpanTheme.bodyGray,
+            ),
+          ),
+          const SizedBox(height: 6),
+          _reqRow('At least 8 characters', p.length >= 8),
+          _reqRow(
+            'At least one uppercase letter',
+            RegExp(r'[A-Z]').hasMatch(p),
+          ),
+          _reqRow('At least one number', RegExp(r'[0-9]').hasMatch(p)),
+          _reqRow(
+            'Special character (!@#\$%^&*)',
+            RegExp(r'[!@#\$%^&*(),.?":{}|<>]').hasMatch(p),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _reqRow(String label, bool met) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        children: [
+          Icon(
+            met ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+            size: 14,
+            color: met ? FinSpanTheme.primaryGreen : FinSpanTheme.bodyGray,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              color: met ? FinSpanTheme.charcoal : FinSpanTheme.bodyGray,
+              fontWeight: met ? FontWeight.w600 : FontWeight.normal,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFooter() {
     return Center(
       child: Column(
         children: [
@@ -576,22 +571,13 @@ class _LoginScreenState extends State<LoginScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Text(
-                "Don't have an account?",
+                'Already have an account?',
                 style: TextStyle(color: FinSpanTheme.bodyGray, fontSize: 14),
               ),
               TextButton(
-                onPressed: disabled
-                    ? null
-                    : () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const SignUpScreen(),
-                          ),
-                        );
-                      },
+                onPressed: _isLoading ? null : () => Navigator.pop(context),
                 child: const Text(
-                  'Create Account',
+                  'Sign In',
                   style: TextStyle(
                     color: FinSpanTheme.primaryGreen,
                     fontWeight: FontWeight.bold,

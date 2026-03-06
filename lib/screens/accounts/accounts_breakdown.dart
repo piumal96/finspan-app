@@ -4,6 +4,7 @@ import '../../theme/finspan_theme.dart';
 import '../../widgets/finspan_card.dart';
 import '../onboarding/onboarding_data.dart';
 import 'package:intl/intl.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 
 class AccountsBreakdownScreen extends StatelessWidget {
   final OnboardingData? data;
@@ -111,7 +112,7 @@ class AccountsBreakdownScreen extends StatelessWidget {
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Icon(
-                            Icons.trending_up,
+                            LucideIcons.trendingUp,
                             color: FinSpanTheme.primaryGreen,
                           ),
                         ),
@@ -199,7 +200,7 @@ class AccountsBreakdownScreen extends StatelessWidget {
                         'Taxable Brokerage',
                         _formatCurrency(d.taxableSavings),
                         'Standard Investing',
-                        Icons.account_balance_wallet,
+                        LucideIcons.wallet,
                       ),
                     if (d.taxableSavings > 0 &&
                         (d.taxDeferredSavings > 0 || d.taxFreeSavings > 0))
@@ -210,7 +211,7 @@ class AccountsBreakdownScreen extends StatelessWidget {
                         'Registered / Pre-Tax',
                         _formatCurrency(d.taxDeferredSavings),
                         'Tax-Deferred Savings',
-                        Icons.savings,
+                        LucideIcons.piggyBank,
                       ),
                     if (d.taxDeferredSavings > 0 && d.taxFreeSavings > 0)
                       const Divider(height: 1),
@@ -220,7 +221,7 @@ class AccountsBreakdownScreen extends StatelessWidget {
                         'Tax-Free / Roth',
                         _formatCurrency(d.taxFreeSavings),
                         'No tax on gains',
-                        Icons.star_outline,
+                        LucideIcons.star,
                       ),
                     if (d.taxableSavings == 0 &&
                         d.taxDeferredSavings == 0 &&
@@ -294,7 +295,7 @@ class AccountsBreakdownScreen extends StatelessWidget {
                           'Credit Cards',
                           _formatCurrency(d.creditCardBalance),
                           'Consumer Debt',
-                          Icons.credit_card,
+                          LucideIcons.creditCard,
                           isDebt: true,
                         ),
                     ],

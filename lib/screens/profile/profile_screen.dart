@@ -4,6 +4,8 @@ import 'package:intl/intl.dart';
 import '../../theme/finspan_theme.dart';
 import '../../widgets/finspan_card.dart';
 import '../onboarding/onboarding_data.dart';
+import '../landing_screen.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 
 /// Callback invoked when the user saves updated data and wants to re-simulate.
 typedef OnDataSaved = void Function(OnboardingData updated);
@@ -149,7 +151,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           : null,
                       child: user?.photoURL == null
                           ? const Icon(
-                              Icons.person,
+                              LucideIcons.user,
                               size: 32,
                               color: FinSpanTheme.primaryGreen,
                             )
@@ -434,7 +436,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               // ── Section 5: Housing, Debts & Expenses ───────────────
               _AccordionSection(
-                icon: Icons.home_outlined,
+                icon: LucideIcons.home,
                 title: 'Housing, Debts & Expenses',
                 color: const Color(0xFFF44336),
                 children: [
@@ -636,17 +638,53 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     const Divider(height: 1),
                     _buildAccountAction(
                       context,
-                      icon: Icons.logout_rounded,
+                      icon: LucideIcons.logOut,
                       title: 'Log Out',
                       color: Colors.redAccent,
                       onTap: () async {
-                        await FirebaseAuth.instance.signOut();
-                        if (context.mounted) {
-                          Navigator.of(
-                            context,
-                          ).pushNamedAndRemoveUntil('/login', (route) => false);
+                        // ── Confirmation dialog ──────────────────────────
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text('Log Out'),
+                            content: const Text(
+                              'Are you sure you want to log out? You will need to sign back in.',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: const Text('Cancel'),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, true),
+                                child: const Text(
+                                  'Log Out',
+                                  style: TextStyle(color: Colors.redAccent),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirmed == true) {
+                          await FirebaseAuth.instance.signOut();
+                          if (context.mounted) {
+                            Navigator.of(context).pushAndRemoveUntil(
+                              MaterialPageRoute(
+                                builder: (_) => const LandingScreen(),
+                              ),
+                              (route) => false,
+                            );
+                          }
                         }
                       },
+                    ),
+                    const Divider(height: 1),
+                    _buildAccountAction(
+                      context,
+                      icon: LucideIcons.trash,
+                      title: 'Delete Account',
+                      color: Colors.red.shade800,
+                      onTap: () => _showDeleteAccountDialog(context),
                     ),
                   ],
                 ),
@@ -766,11 +804,90 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       ),
       trailing: Icon(
-        Icons.chevron_right_rounded,
+        LucideIcons.chevronRight,
         color: Colors.grey.withValues(alpha: 0.5),
       ),
       onTap: onTap,
     );
+  }
+
+  Future<void> _showDeleteAccountDialog(BuildContext context) async {
+    String typed = '';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlgState) => AlertDialog(
+          title: const Text('Delete Account'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '⚠️ This action is permanent. All your data will be deleted and cannot be recovered.',
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Type DELETE to confirm:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                autofocus: true,
+                onChanged: (v) => setDlgState(() => typed = v),
+                decoration: const InputDecoration(
+                  hintText: 'DELETE',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: typed == 'DELETE'
+                  ? () => Navigator.pop(ctx, true)
+                  : null,
+              child: Text(
+                'Delete Forever',
+                style: TextStyle(
+                  color: typed == 'DELETE' ? Colors.red.shade800 : Colors.grey,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed == true && context.mounted) {
+      try {
+        final user = FirebaseAuth.instance.currentUser;
+        await user?.delete();
+        if (context.mounted) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const LandingScreen()),
+            (route) => false,
+          );
+        }
+      } on FirebaseAuthException catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                e.code == 'requires-recent-login'
+                    ? 'Please sign out and sign back in before deleting your account.'
+                    : 'Failed to delete account. Please try again.',
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
   }
 }
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/finspan_theme.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 
 class ResponseUtils {
   static void showPremiumSnackBar(
@@ -8,16 +9,17 @@ class ResponseUtils {
     bool isError = false,
     bool isSuccess = false,
   }) {
+    if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
           children: [
             Icon(
               isError
-                  ? Icons.error_outline
+                  ? LucideIcons.alertCircle
                   : isSuccess
-                  ? Icons.check_circle_outline
-                  : Icons.info_outline,
+                  ? LucideIcons.checkCircle2
+                  : LucideIcons.info,
               color: Colors.white,
               size: 20,
             ),
@@ -55,6 +57,7 @@ class ResponseUtils {
     String? confirmLabel,
     VoidCallback? onConfirm,
   }) {
+    if (!context.mounted) return;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(

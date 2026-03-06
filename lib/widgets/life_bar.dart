@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/finspan_theme.dart';
 import '../models/simulation_models.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 
 class FinSpanLifeBar extends StatefulWidget {
   final int currentAge;
@@ -502,21 +503,21 @@ class _FinSpanLifeBarState extends State<FinSpanLifeBar> {
   IconData _getEventIcon(LifeEventType type) {
     switch (type) {
       case LifeEventType.job:
-        return Icons.work;
+        return LucideIcons.briefcase;
       case LifeEventType.home:
-        return Icons.home;
+        return LucideIcons.home;
       case LifeEventType.marriage:
-        return Icons.favorite;
+        return LucideIcons.heart;
       case LifeEventType.children:
-        return Icons.child_care;
+        return LucideIcons.baby;
       case LifeEventType.retirement:
-        return Icons.beach_access;
+        return LucideIcons.palmtree;
       case LifeEventType.education:
-        return Icons.school;
+        return LucideIcons.graduationCap;
       case LifeEventType.business:
-        return Icons.rocket_launch;
+        return LucideIcons.rocket;
       default:
-        return Icons.event;
+        return LucideIcons.calendarDays;
     }
   }
 }

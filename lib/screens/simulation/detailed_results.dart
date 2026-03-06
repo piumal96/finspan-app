@@ -8,6 +8,7 @@ import '../../widgets/life_bar.dart';
 import '../../services/simulation_service.dart';
 import '../../models/simulation_models.dart';
 import '../dashboard/main_dashboard.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 
 class DetailedResultsScreen extends StatefulWidget {
   final OnboardingData data;
@@ -339,7 +340,7 @@ class _DetailedResultsScreenState extends State<DetailedResultsScreen> {
                     child: Column(
                       children: [
                         const Icon(
-                          Icons.error_outline,
+                          LucideIcons.alertCircle,
                           size: 48,
                           color: Colors.red,
                         ),
@@ -639,7 +640,7 @@ class _DetailedResultsScreenState extends State<DetailedResultsScreen> {
           ListTile(
             leading: Icon(
               _result!.shortfallAge == null
-                  ? Icons.check_circle_outline
+                  ? LucideIcons.checkCircle2
                   : Icons.warning_amber_rounded,
               color: _result!.shortfallAge == null
                   ? FinSpanTheme.primaryGreen
@@ -655,7 +656,7 @@ class _DetailedResultsScreenState extends State<DetailedResultsScreen> {
           ),
           const Divider(height: 1),
           ListTile(
-            leading: const Icon(Icons.account_balance_wallet_outlined),
+            leading: const Icon(LucideIcons.wallet),
             title: const Text('Ending Wealth'),
             trailing: Text(
               '\$${(_result!.endingWealth / 1000000).toStringAsFixed(1)}M',
@@ -664,7 +665,7 @@ class _DetailedResultsScreenState extends State<DetailedResultsScreen> {
           ),
           const Divider(height: 1),
           ListTile(
-            leading: const Icon(Icons.trending_up),
+            leading: const Icon(LucideIcons.trendingUp),
             title: const Text('Peak Wealth'),
             trailing: Text(
               '\$${(_result!.standardResults.map((y) => y.total).reduce((a, b) => a > b ? a : b) / 1000000).toStringAsFixed(1)}M',

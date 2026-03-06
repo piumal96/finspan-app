@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
-import 'package:syncfusion_flutter_sliders/sliders.dart';
 import '../../theme/finspan_theme.dart';
 import '../../widgets/finspan_card.dart';
 import '../../widgets/life_bar.dart';
 import '../../models/simulation_models.dart';
 import '../../utils/local_wealth_calculator.dart';
 import '../onboarding/onboarding_data.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 
 /// Mobile port of web's SimulatorLifeWeaver.
 /// Calculates wealth 100% locally — no API calls, fully real-time.
@@ -32,7 +32,6 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
 
   // Monte Carlo State
   bool _enableMonteCarlo = false;
-  double _luckPercentile = 50.0;
   LocalMonteCarloResult? _mcResult;
 
   // History for undo
@@ -176,35 +175,40 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
     _saveHistory();
     final categories = <String, List<_EventOption>>{
       '💼 Work & Income': [
-        _EventOption(LifeEventType.job, 'New Job', Icons.work, Colors.blue),
+        _EventOption(
+          LifeEventType.job,
+          'New Job',
+          LucideIcons.briefcase,
+          Colors.blue,
+        ),
         _EventOption(
           LifeEventType.sideHustle,
           'Side Income',
-          Icons.star,
+          LucideIcons.star,
           Colors.amber,
         ),
         _EventOption(
           LifeEventType.jobLoss,
           'Work Gap',
-          Icons.warning_amber,
+          LucideIcons.alertTriangle,
           Colors.orange,
         ),
         _EventOption(
           LifeEventType.careerBreak,
           'Career Break',
-          Icons.flight,
+          LucideIcons.plane,
           Colors.cyan,
         ),
         _EventOption(
           LifeEventType.business,
           'Start Business',
-          Icons.rocket_launch,
+          LucideIcons.rocket,
           Colors.purple,
         ),
         _EventOption(
           LifeEventType.jobChange,
           'Job Change',
-          Icons.swap_horiz,
+          LucideIcons.arrowLeftRight,
           Colors.teal,
         ),
       ],
@@ -212,26 +216,31 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
         _EventOption(
           LifeEventType.rent,
           'Renting',
-          Icons.apartment,
+          LucideIcons.building,
           Colors.brown,
         ),
-        _EventOption(LifeEventType.home, 'Buy Home', Icons.home, Colors.orange),
+        _EventOption(
+          LifeEventType.home,
+          'Buy Home',
+          LucideIcons.home,
+          Colors.orange,
+        ),
         _EventOption(
           LifeEventType.marriage,
           'Partner Up',
-          Icons.favorite,
+          LucideIcons.heart,
           Colors.pink,
         ),
         _EventOption(
           LifeEventType.children,
           'Have Kids',
-          Icons.child_care,
+          LucideIcons.baby,
           Colors.purple,
         ),
         _EventOption(
           LifeEventType.familySupport,
           'Support Family',
-          Icons.handshake,
+          LucideIcons.heartHandshake,
           Colors.indigo,
         ),
       ],
@@ -239,25 +248,25 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
         _EventOption(
           LifeEventType.education,
           'Education',
-          Icons.school,
+          LucideIcons.graduationCap,
           Colors.indigo,
         ),
         _EventOption(
           LifeEventType.retirement,
           'Retire',
-          Icons.beach_access,
+          LucideIcons.palmtree,
           Colors.green,
         ),
         _EventOption(
           LifeEventType.health,
           'Health Event',
-          Icons.health_and_safety,
+          LucideIcons.heartPulse,
           Colors.red,
         ),
         _EventOption(
           LifeEventType.move,
           'Move Cities',
-          Icons.location_on,
+          LucideIcons.mapPin,
           Colors.teal,
         ),
       ],
@@ -476,7 +485,7 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                icon: const Icon(Icons.delete_outline, color: Colors.red),
+                icon: const Icon(LucideIcons.trash2, color: Colors.red),
                 label: const Text(
                   'Remove Event',
                   style: TextStyle(color: Colors.red),
@@ -536,12 +545,12 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
         actions: [
           if (_history.isNotEmpty)
             TextButton.icon(
-              icon: const Icon(Icons.undo, size: 18),
+              icon: const Icon(LucideIcons.undo2, size: 18),
               label: const Text('Undo'),
               onPressed: _undo,
             ),
           TextButton.icon(
-            icon: const Icon(Icons.refresh, size: 18),
+            icon: const Icon(LucideIcons.refreshCw, size: 18),
             label: const Text('Reset'),
             onPressed: _reset,
           ),
@@ -897,21 +906,21 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
   IconData _getEventIcon(LifeEventType type) {
     switch (type) {
       case LifeEventType.job:
-        return Icons.work;
+        return LucideIcons.briefcase;
       case LifeEventType.home:
-        return Icons.home;
+        return LucideIcons.home;
       case LifeEventType.marriage:
-        return Icons.favorite;
+        return LucideIcons.heart;
       case LifeEventType.children:
-        return Icons.child_care;
+        return LucideIcons.baby;
       case LifeEventType.retirement:
-        return Icons.beach_access;
+        return LucideIcons.palmtree;
       case LifeEventType.education:
-        return Icons.school;
+        return LucideIcons.graduationCap;
       case LifeEventType.business:
-        return Icons.rocket_launch;
+        return LucideIcons.rocket;
       default:
-        return Icons.event;
+        return LucideIcons.calendarDays;
     }
   }
 }

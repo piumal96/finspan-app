@@ -1,9 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../theme/finspan_theme.dart';
 import '../onboarding/onboarding_data.dart';
 import 'detailed_results.dart';
 import '../../services/user_service.dart';
 import 'dart:async';
+import 'package:lucide_icons/lucide_icons.dart';
 
 class SimulationRunnerScreen extends StatefulWidget {
   final OnboardingData data;
@@ -20,6 +22,7 @@ class _SimulationRunnerScreenState extends State<SimulationRunnerScreen>
   final UserService _userService = UserService();
 
   int _currentStepIndex = 0;
+  Timer? _stepTimer;
   final List<String> _steps = [
     "Analyzing historical market data...",
     "Modeling inflation trajectories...",
@@ -34,7 +37,7 @@ class _SimulationRunnerScreenState extends State<SimulationRunnerScreen>
 
     // Save profile to Firestore in background
     _userService.saveUserProfile(widget.data).catchError((e) {
-      print("Failed to save profile: $e");
+      if (kDebugMode) print('Failed to save profile: $e');
     });
 
     _progressController =
@@ -60,7 +63,7 @@ class _SimulationRunnerScreenState extends State<SimulationRunnerScreen>
   }
 
   void _startStepRotation() {
-    Timer.periodic(const Duration(milliseconds: 1200), (timer) {
+    _stepTimer = Timer.periodic(const Duration(milliseconds: 1200), (timer) {
       if (mounted && _currentStepIndex < _steps.length - 1) {
         setState(() {
           _currentStepIndex++;
@@ -73,6 +76,7 @@ class _SimulationRunnerScreenState extends State<SimulationRunnerScreen>
 
   @override
   void dispose() {
+    _stepTimer?.cancel();
     _progressController.dispose();
     _pulseController.dispose();
     super.dispose();
@@ -116,7 +120,7 @@ class _SimulationRunnerScreenState extends State<SimulationRunnerScreen>
                       color: FinSpanTheme.primaryGreen,
                     ),
                     child: const Icon(
-                      Icons.auto_graph_rounded,
+                      LucideIcons.activity,
                       color: Colors.white,
                       size: 40,
                     ),

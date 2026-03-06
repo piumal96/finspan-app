@@ -2,9 +2,38 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import '../theme/finspan_theme.dart';
 import 'auth/login_screen.dart';
+import 'auth/signup_screen.dart';
 
-class LandingScreen extends StatelessWidget {
+class LandingScreen extends StatefulWidget {
   const LandingScreen({super.key});
+
+  @override
+  State<LandingScreen> createState() => _LandingScreenState();
+}
+
+class _LandingScreenState extends State<LandingScreen> {
+  late final TapGestureRecognizer _termsTap;
+  late final TapGestureRecognizer _privacyTap;
+
+  @override
+  void initState() {
+    super.initState();
+    _termsTap = TapGestureRecognizer()
+      ..onTap = () {
+        // TODO: Open Terms of Service URL
+      };
+    _privacyTap = TapGestureRecognizer()
+      ..onTap = () {
+        // TODO: Open Privacy Policy URL
+      };
+  }
+
+  @override
+  void dispose() {
+    _termsTap.dispose();
+    _privacyTap.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -91,7 +120,8 @@ class LandingScreen extends StatelessWidget {
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (context) => const LoginScreen(),
+                                      builder: (context) =>
+                                          const SignUpScreen(),
                                     ),
                                   );
                                 },
@@ -172,8 +202,7 @@ class LandingScreen extends StatelessWidget {
                                     style: const TextStyle(
                                       decoration: TextDecoration.underline,
                                     ),
-                                    recognizer: TapGestureRecognizer()
-                                      ..onTap = () {},
+                                    recognizer: _termsTap,
                                   ),
                                   const TextSpan(text: ' & '),
                                   TextSpan(
@@ -181,8 +210,7 @@ class LandingScreen extends StatelessWidget {
                                     style: const TextStyle(
                                       decoration: TextDecoration.underline,
                                     ),
-                                    recognizer: TapGestureRecognizer()
-                                      ..onTap = () {},
+                                    recognizer: _privacyTap,
                                   ),
                                 ],
                               ),

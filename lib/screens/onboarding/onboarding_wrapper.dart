@@ -9,6 +9,7 @@ import 'onboarding_step_5.dart';
 import 'onboarding_step_6.dart';
 import 'onboarding_data.dart';
 import '../dashboard/main_dashboard.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 
 class OnboardingWrapper extends StatefulWidget {
   const OnboardingWrapper({super.key});
@@ -70,14 +71,14 @@ class _OnboardingWrapperState extends State<OnboardingWrapper> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: FinSpanTheme.backgroundLight,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: FinSpanTheme.backgroundLight,
         elevation: 0,
         toolbarHeight: 44,
         leading: IconButton(
           icon: const Icon(
-            Icons.arrow_back,
+            LucideIcons.arrowLeft,
             color: FinSpanTheme.charcoal,
             size: 20,
           ),

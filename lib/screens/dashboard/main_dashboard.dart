@@ -1,4 +1,6 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
 import 'package:syncfusion_flutter_sliders/sliders.dart';
 import '../../theme/finspan_theme.dart';
@@ -96,73 +98,145 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Calculate metrics from simulation or default
-    final double currentWealth =
-        widget.result?.standardResults.first.total ?? 45200000;
+    // Derive current wealth from local wealth calculator (first data point = today)
+    final double currentWealth = _homeWealthData.isNotEmpty
+        ? _homeWealthData.first.total
+        : (widget.result?.standardResults.first.total ?? 0);
 
-    // 10 year projection
-    double projected10Years = currentWealth * 1.5; // fallback
+    // 10-year projection: use calculator data at index 10 if available
+    double projected10Years;
     if (widget.result != null && widget.result!.standardResults.length > 10) {
       projected10Years = widget.result!.standardResults[10].total;
+    } else if (_homeWealthData.length > 10) {
+      projected10Years = _homeWealthData[10].total;
+    } else {
+      projected10Years = _homeWealthData.isNotEmpty
+          ? _homeWealthData.last.total
+          : currentWealth;
     }
 
     final int retirementAge = widget.data?.retirementAge ?? 65;
     final int currentAge = widget.data?.currentAge ?? 35;
     final int yearsToRetirement = (retirementAge - currentAge).clamp(0, 50);
 
+    // Annual contributions from actual OnboardingData fields
     final double annualContribution =
         (widget.data?.userFourOneKContrib ?? 0) +
         (widget.data?.userRothIRAContrib ?? 0) +
-        (widget.data?.taxableSavings != null ? 150000 * 12 : 0);
+        (widget.data?.spouseFourOneKContrib ?? 0) +
+        (widget.data?.spouseRothIRAContrib ?? 0);
+
+    // Personalize greeting with user's display name
+    final String? displayName = FirebaseAuth.instance.currentUser?.displayName;
+    final String firstName = displayName?.split(' ').first ?? '';
+    final String greeting = firstName.isNotEmpty
+        ? 'Hi, $firstName 👋'
+        : 'Hi, Welcome back 👋';
 
     return Scaffold(
       backgroundColor: FinSpanTheme.backgroundLight,
-      appBar: (_selectedIndex == 1 || _selectedIndex == 3)
-          ? null
-          : AppBar(
-              backgroundColor: FinSpanTheme.backgroundLight,
-              elevation: 0,
-              leading: Padding(
-                padding: const EdgeInsets.only(left: 24.0, top: 12, bottom: 12),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: FinSpanTheme.primaryGreen.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Center(
-                    child: Text(
-                      'F',
-                      style: TextStyle(
-                        color: FinSpanTheme.primaryGreen,
-                        fontWeight: FontWeight.w900,
-                        fontFamily: 'Manrope',
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(64),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 12,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Logo mark
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [
+                          FinSpanTheme.primaryGreen,
+                          FinSpanTheme.vibrantGreen,
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Center(
+                      child: Text(
+                        'FS',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 12,
+                          letterSpacing: 0.5,
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ),
-              title: Text(
-                'Hi, Welcome back 👋',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-              ),
-              actions: [
-                Padding(
-                  padding: const EdgeInsets.only(right: 24.0),
-                  child: GestureDetector(
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          greeting,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                            color: FinSpanTheme.charcoal,
+                            letterSpacing: -0.3,
+                          ),
+                        ),
+                        const Text(
+                          'Your financial dashboard',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: FinSpanTheme.bodyGray,
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // User avatar button
+                  GestureDetector(
                     onTap: () => setState(() => _selectedIndex = 3),
-                    child: CircleAvatar(
-                      backgroundColor: FinSpanTheme.dividerColor,
+                    child: Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: FinSpanTheme.primaryGreen.withValues(alpha: 0.1),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: FinSpanTheme.primaryGreen.withValues(
+                            alpha: 0.2,
+                          ),
+                          width: 1.5,
+                        ),
+                      ),
                       child: const Icon(
-                        Icons.person,
-                        color: FinSpanTheme.bodyGray,
+                        LucideIcons.user,
+                        color: FinSpanTheme.primaryGreen,
+                        size: 18,
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
+          ),
+        ),
+      ),
       body: IndexedStack(
         index: _selectedIndex,
         children: [
@@ -294,7 +368,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
               shape: BoxShape.circle,
             ),
             child: const Icon(
-              Icons.analytics_rounded,
+              LucideIcons.lineChart,
               color: FinSpanTheme.primaryGreen,
               size: 18,
             ),
@@ -339,7 +413,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Icon(
-                      Icons.tune,
+                      LucideIcons.settings2,
                       size: 14,
                       color: FinSpanTheme.primaryGreen,
                     ),
@@ -805,451 +879,6 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
     );
   }
 
-  Widget _buildMonteCarloHeader() {
-    final mc = widget.result!.monteCarlo!;
-    Color successColor = _getSuccessColor(mc.successRate);
-
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Icon(
-                Icons.analytics_rounded,
-                color: FinSpanTheme.primaryGreen,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Monte Carlo Analysis',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: successColor,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Text(
-                        '${mc.successRate.toStringAsFixed(1)}% Success',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        Row(
-          children: [
-            Switch(
-              value: true,
-              onChanged: (val) {},
-              activeColor: FinSpanTheme.primaryGreen,
-            ),
-            const Text('Enable', style: TextStyle(fontSize: 14)),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildMonteCarloSlider(MonteCarloResult mc) {
-    // Determine title text based on slider position
-    String luckLabel = '😐 Average';
-    if (_luckSliderValue < 30) luckLabel = '😢 Unlucky';
-    if (_luckSliderValue > 70) luckLabel = '🤩 Lucky';
-
-    // Interpolate final portfolio value based on P10, P50, P90
-    double val;
-    if (_luckSliderValue < 50) {
-      double t = _luckSliderValue / 50.0;
-      val =
-          mc.stats.last.netWorthP10 +
-          (mc.stats.last.netWorthMedian - mc.stats.last.netWorthP10) * t;
-    } else {
-      double t =
-          (_luckSliderValue - 50.0) /
-          50.0; // Wait, actually backend provides P90 as luckiest. Assume P90 maps to slider >= 90
-      // Map 50-100 to P50-P90 range for simplicity
-      val =
-          mc.stats.last.netWorthMedian +
-          (mc.stats.last.netWorthP90 - mc.stats.last.netWorthMedian) * t;
-    }
-
-    return FinSpanCard(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Luck Slider',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.grey.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(luckLabel, style: const TextStyle(fontSize: 12)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          SfSlider(
-            min: 0.0,
-            max: 100.0,
-            value: _luckSliderValue,
-            interval: 50,
-            showTicks: true,
-            showLabels: true,
-            enableTooltip: true,
-            minorTicksPerInterval: 0,
-            activeColor: FinSpanTheme.primaryGreen,
-            onChanged: (dynamic value) {
-              setState(() {
-                _luckSliderValue = value;
-              });
-            },
-          ),
-          const SizedBox(height: 16),
-          Center(
-            child: RichText(
-              text: TextSpan(
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: FinSpanTheme.charcoal,
-                ),
-                children: [
-                  TextSpan(
-                    text: '${_luckSliderValue.toInt()}th percentile: ',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  TextSpan(
-                    text:
-                        'Final portfolio \$${(val / 1000000).toStringAsFixed(1)}M',
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMonteCarloSection() {
-    final mc = widget.result!.monteCarlo!;
-    double maxY = 0;
-    for (var s in mc.stats) {
-      if (s.netWorthP90 > maxY) maxY = s.netWorthP90;
-    }
-    double dynamicMaxY = maxY > 0 ? (maxY * 1.1) : 10000000;
-
-    // Calculate simulated year-over-year median returns for the bar chart
-    List<_ReturnData> returnData = [];
-    for (int i = 1; i < mc.stats.length; i++) {
-      double prev = mc.stats[i - 1].netWorthMedian;
-      double curr = mc.stats[i].netWorthMedian;
-      double percentChange = 0;
-      if (prev > 0) {
-        percentChange = ((curr - prev) / prev) * 100;
-      }
-      returnData.add(_ReturnData(mc.stats[i].year, percentChange));
-    }
-
-    return Column(
-      children: [
-        FinSpanCard(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Outcome Distribution',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-              ),
-              const Text(
-                '100 simulations',
-                style: TextStyle(color: FinSpanTheme.bodyGray, fontSize: 14),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                height: 250,
-                child: SfCartesianChart(
-                  plotAreaBorderWidth: 0,
-                  margin: EdgeInsets.zero,
-                  trackballBehavior: TrackballBehavior(
-                    enable: true,
-                    activationMode: ActivationMode.singleTap,
-                  ),
-                  primaryXAxis: NumericAxis(
-                    minimum: widget.data?.currentAge.toDouble() ?? 35,
-                    maximum: widget.data?.lifeExpectancy.toDouble() ?? 95,
-                    interval: 10,
-                    majorGridLines: const MajorGridLines(width: 0),
-                  ),
-                  primaryYAxis: NumericAxis(
-                    minimum: 0,
-                    maximum: dynamicMaxY,
-                    interval: dynamicMaxY / 5,
-                    axisLine: const AxisLine(width: 0),
-                    majorTickLines: const MajorTickLines(size: 0),
-                    axisLabelFormatter: (AxisLabelRenderDetails details) {
-                      double val = details.value.toDouble();
-                      if (val == 0) return ChartAxisLabel('0', null);
-                      if (val >= 1000000) {
-                        return ChartAxisLabel(
-                          '${(val / 1000000).toInt()}M',
-                          null,
-                        );
-                      }
-                      return ChartAxisLabel('${(val / 1000).toInt()}K', null);
-                    },
-                  ),
-                  series: <CartesianSeries>[
-                    SplineSeries<MonteCarloStat, double>(
-                      dataSource: mc.stats,
-                      xValueMapper: (MonteCarloStat data, _) =>
-                          data.year.toDouble(),
-                      yValueMapper: (MonteCarloStat data, _) =>
-                          data.netWorthP90,
-                      color: FinSpanTheme.primaryGreen.withValues(alpha: 0.3),
-                      width: 2,
-                      dashArray: const <double>[5, 5],
-                      name: 'Lucky',
-                    ),
-                    SplineSeries<MonteCarloStat, double>(
-                      dataSource: mc.stats,
-                      xValueMapper: (MonteCarloStat data, _) =>
-                          data.year.toDouble(),
-                      yValueMapper: (MonteCarloStat data, _) =>
-                          data.netWorthP10,
-                      color: Colors.orange.withValues(alpha: 0.3),
-                      width: 2,
-                      dashArray: const <double>[5, 5],
-                      name: 'Unlucky',
-                    ),
-                    SplineAreaSeries<MonteCarloStat, double>(
-                      dataSource: mc.stats,
-                      xValueMapper: (MonteCarloStat data, _) =>
-                          data.year.toDouble(),
-                      yValueMapper: (MonteCarloStat data, _) =>
-                          data.netWorthMedian,
-                      color: FinSpanTheme.primaryGreen.withValues(alpha: 0.2),
-                      borderColor: FinSpanTheme.primaryGreen,
-                      borderWidth: 2,
-                      name: 'Median',
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _getSuccessColor(mc.successRate),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Text(
-                      '${mc.successRate.toStringAsFixed(1)}%',
-                      style: const TextStyle(color: Colors.white, fontSize: 12),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: Colors.grey.withValues(alpha: 0.3),
-                      ),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: const Text(
-                      '100 runs',
-                      style: TextStyle(fontSize: 12),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: Colors.grey.withValues(alpha: 0.3),
-                      ),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Text(
-                      '${(mc.volatility * 100).toInt()}% vol',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        FinSpanCard(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Market Returns',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-              ),
-              const Text(
-                '50th percentile scenario',
-                style: TextStyle(color: FinSpanTheme.bodyGray, fontSize: 14),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                height: 250,
-                child: SfCartesianChart(
-                  plotAreaBorderWidth: 0,
-                  margin: EdgeInsets.zero,
-                  primaryXAxis: NumericAxis(
-                    isVisible: true,
-                    title: AxisTitle(
-                      text: 'Age',
-                      textStyle: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    axisLine: const AxisLine(width: 0),
-                    majorGridLines: const MajorGridLines(width: 0),
-                    majorTickLines: const MajorTickLines(size: 0),
-                    labelStyle: const TextStyle(color: Colors.transparent),
-                  ),
-                  primaryYAxis: NumericAxis(
-                    title: AxisTitle(
-                      text: 'Return %',
-                      textStyle: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    minimum: -30,
-                    maximum: 40,
-                    interval: 10,
-                    axisLine: const AxisLine(width: 0),
-                    majorTickLines: const MajorTickLines(size: 0),
-                    labelFormat: '{value}%',
-                    labelStyle: const TextStyle(
-                      fontSize: 10,
-                      color: FinSpanTheme.bodyGray,
-                    ),
-                  ),
-                  series: <CartesianSeries>[
-                    ColumnSeries<_ReturnData, double>(
-                      dataSource: returnData,
-                      xValueMapper: (_ReturnData data, _) =>
-                          data.year.toDouble(),
-                      yValueMapper: (_ReturnData data, _) => data.percentChange,
-                      pointColorMapper: (_ReturnData data, _) =>
-                          data.percentChange >= 0
-                          ? FinSpanTheme.vibrantGreen
-                          : Colors.redAccent,
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(2),
-                        topRight: Radius.circular(2),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: FinSpanTheme.vibrantGreen.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Row(
-                      children: const [
-                        Icon(
-                          Icons.arrow_upward,
-                          size: 12,
-                          color: FinSpanTheme.vibrantGreen,
-                        ),
-                        SizedBox(width: 4),
-                        Text('Positive', style: TextStyle(fontSize: 12)),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.redAccent.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Row(
-                      children: const [
-                        Icon(
-                          Icons.arrow_downward,
-                          size: 12,
-                          color: Colors.orange,
-                        ),
-                        SizedBox(width: 4),
-                        Text('Negative', style: TextStyle(fontSize: 12)),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
   Color _getSuccessColor(double rate) {
     if (rate >= 80) return FinSpanTheme.vibrantGreen;
     if (rate >= 50) return Colors.orange;
@@ -1270,7 +899,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
               child: _buildStatCard(
                 'Current Savings',
                 '\$${(current / 1000000).toStringAsFixed(1)}M',
-                Icons.account_balance_wallet,
+                LucideIcons.wallet,
                 FinSpanTheme.primaryGreen,
               ),
             ),
@@ -1279,7 +908,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
               child: _buildStatCard(
                 '10Y Projection',
                 '\$${(projected / 1000000).toStringAsFixed(1)}M',
-                Icons.trending_up,
+                LucideIcons.trendingUp,
                 Colors.blue,
               ),
             ),
@@ -1292,7 +921,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
               child: _buildStatCard(
                 'Annual Contrib.',
                 '\$${(contribution / 1000).toStringAsFixed(0)}K',
-                Icons.savings,
+                LucideIcons.piggyBank,
                 Colors.orange,
               ),
             ),
@@ -1301,7 +930,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
               child: _buildStatCard(
                 'Years to Retire',
                 '$years Years',
-                Icons.event,
+                LucideIcons.calendarDays,
                 Colors.purple,
               ),
             ),
@@ -1319,43 +948,60 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
     bool fullWidth = false,
     Widget? child,
   }) {
-    return FinSpanCard(
+    return Container(
+      width: fullWidth ? double.infinity : null,
       padding: const EdgeInsets.all(16),
-      child: SizedBox(
-        width: fullWidth ? double.infinity : null,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: FinSpanTheme.bodyGray,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      value,
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: color,
-                      ),
-                    ),
-                  ],
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFF0F0F0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                Icon(icon, color: color, size: 24),
-              ],
+                child: Icon(icon, color: color, size: 18),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+              color: FinSpanTheme.charcoal,
+              letterSpacing: -0.5,
             ),
-            if (child != null) child,
-          ],
-        ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 11,
+              color: FinSpanTheme.bodyGray,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          if (child != null) child,
+        ],
       ),
     );
   }
@@ -1403,7 +1049,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
               if (_homeEnableMonteCarlo && _homeMcResult != null)
                 TextButton.icon(
                   onPressed: _showLuckSliderSheet,
-                  icon: const Icon(Icons.tune, size: 14),
+                  icon: const Icon(LucideIcons.settings2, size: 14),
                   label: const Text('Luck', style: TextStyle(fontSize: 12)),
                   style: TextButton.styleFrom(
                     foregroundColor: FinSpanTheme.primaryGreen,
@@ -1557,54 +1203,125 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
   }
 
   Widget _buildPortfolioBreakdown() {
-    return FinSpanCard(
+    // Use actual user savings ratios — not hardcoded mock data
+    final double taxDeferred = widget.data?.taxDeferredSavings ?? 0;
+    final double taxFree = widget.data?.taxFreeSavings ?? 0;
+    final double taxable = widget.data?.taxableSavings ?? 0;
+    final double total = taxDeferred + taxFree + taxable;
+
+    // Fallback to sensible defaults if no data yet
+    final double deferredPct = total > 0 ? (taxDeferred / total * 100) : 50;
+    final double freePct = total > 0 ? (taxFree / total * 100) : 30;
+    final double taxablePct = total > 0 ? (taxable / total * 100) : 20;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFF0F0F0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Portfolio Allocation',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: FinSpanTheme.primaryGreen.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: const Icon(
+                  LucideIcons.pieChart,
+                  color: FinSpanTheme.primaryGreen,
+                  size: 16,
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Portfolio Allocation',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                      color: FinSpanTheme.charcoal,
+                    ),
+                  ),
+                  Text(
+                    'By account type',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: FinSpanTheme.bodyGray,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
           Row(
             children: [
               SizedBox(
-                width: 120,
-                height: 120,
+                width: 110,
+                height: 110,
                 child: SfCircularChart(
                   margin: EdgeInsets.zero,
                   series: <CircularSeries<_PieData, String>>[
                     DoughnutSeries<_PieData, String>(
                       dataSource: [
-                        _PieData('Dividend', 45, FinSpanTheme.primaryGreen),
-                        _PieData('Growth', 35, Colors.blue),
-                        _PieData('Fixed Income', 20, Colors.orange),
+                        _PieData(
+                          'Tax-Deferred',
+                          deferredPct,
+                          FinSpanTheme.primaryGreen,
+                        ),
+                        _PieData('Tax-Free', freePct, const Color(0xFF3B82F6)),
+                        _PieData(
+                          'Taxable',
+                          taxablePct,
+                          const Color(0xFFF59E0B),
+                        ),
                       ],
                       xValueMapper: (_PieData data, _) => data.x,
                       yValueMapper: (_PieData data, _) => data.y,
                       pointColorMapper: (_PieData data, _) => data.color,
-                      innerRadius: '60%',
+                      innerRadius: '65%',
                       radius: '100%',
+                      strokeWidth: 0,
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 32),
+              const SizedBox(width: 20),
               Expanded(
                 child: Column(
                   children: [
                     _buildAllocationLegend(
-                      'Dividend',
-                      '45%',
+                      'Tax-Deferred',
+                      '${deferredPct.toStringAsFixed(0)}%',
                       FinSpanTheme.primaryGreen,
                     ),
-                    const SizedBox(height: 12),
-                    _buildAllocationLegend('Growth', '35%', Colors.blue),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 10),
                     _buildAllocationLegend(
-                      'Fixed Income',
-                      '20%',
-                      Colors.orange,
+                      'Tax-Free (Roth)',
+                      '${freePct.toStringAsFixed(0)}%',
+                      const Color(0xFF3B82F6),
+                    ),
+                    const SizedBox(height: 10),
+                    _buildAllocationLegend(
+                      'Taxable',
+                      '${taxablePct.toStringAsFixed(0)}%',
+                      const Color(0xFFF59E0B),
                     ),
                   ],
                 ),
@@ -1623,9 +1340,12 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
         Row(
           children: [
             Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(3),
+              ),
             ),
             const SizedBox(width: 8),
             Text(
@@ -1633,30 +1353,25 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
               style: const TextStyle(
                 fontSize: 12,
                 color: FinSpanTheme.bodyGray,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ],
         ),
-        Text(
-          value,
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildLegendItem(String label, Color color) {
-    return Row(
-      children: [
         Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 4),
-        Text(
-          label,
-          style: const TextStyle(fontSize: 10, color: FinSpanTheme.bodyGray),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            value,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
         ),
       ],
     );
@@ -1677,38 +1392,69 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
         width: double.infinity,
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(FinSpanTheme.cardRadius),
-          border: Border.all(
-            color: FinSpanTheme.primaryGreen.withValues(alpha: 0.3),
-            width: 2,
+          gradient: const LinearGradient(
+            colors: [FinSpanTheme.primaryGreen, FinSpanTheme.vibrantGreen],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: FinSpanTheme.primaryGreen.withValues(alpha: 0.3),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
+            ),
+          ],
         ),
         child: Row(
           children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(LucideIcons.zap, color: Colors.white, size: 20),
+            ),
+            const SizedBox(width: 16),
             const Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Run Simulation',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
-                  SizedBox(height: 4),
-                  Text(
-                    "Update your plan and see new results",
+                    'Run Full Simulation',
                     style: TextStyle(
-                      fontSize: 12,
-                      color: FinSpanTheme.bodyGray,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                      color: Colors.white,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                  SizedBox(height: 3),
+                  Text(
+                    'Get a detailed retirement forecast with tax optimization',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.white70,
+                      fontWeight: FontWeight.w400,
                     ),
                   ),
                 ],
               ),
             ),
-            const Icon(
-              Icons.arrow_forward_ios,
-              size: 16,
-              color: FinSpanTheme.primaryGreen,
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                LucideIcons.arrowRight,
+                size: 16,
+                color: Colors.white,
+              ),
             ),
           ],
         ),
@@ -1717,40 +1463,83 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
   }
 
   Widget _buildBottomNav() {
+    const navItems = [
+      _NavItem(LucideIcons.layoutDashboard, 'Home'),
+      _NavItem(LucideIcons.wallet, 'Accounts'),
+      _NavItem(LucideIcons.lineChart, 'Simulator'),
+      _NavItem(LucideIcons.userCog, 'My Plan'),
+    ];
+
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: Colors.white,
-        border: Border(
-          top: BorderSide(color: FinSpanTheme.dividerColor, width: 1),
-        ),
-      ),
-      child: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: (index) {
-          setState(() => _selectedIndex = index);
-        },
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_outlined),
-            activeIcon: Icon(Icons.home_rounded),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.account_balance_wallet_outlined),
-            activeIcon: Icon(Icons.account_balance_wallet_rounded),
-            label: 'Accounts',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.analytics_outlined),
-            activeIcon: Icon(Icons.analytics_rounded),
-            label: 'Simulator',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.tune_outlined),
-            activeIcon: Icon(Icons.tune_rounded),
-            label: 'My Plan',
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 20,
+            offset: const Offset(0, -4),
           ),
         ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          child: Row(
+            children: List.generate(navItems.length, (index) {
+              final item = navItems[index];
+              final isSelected = _selectedIndex == index;
+              return Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => setState(() => _selectedIndex = index),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeInOut,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          padding: EdgeInsets.all(isSelected ? 8 : 4),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? FinSpanTheme.primaryGreen.withValues(
+                                    alpha: 0.12,
+                                  )
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(
+                            item.icon,
+                            size: 20,
+                            color: isSelected
+                                ? FinSpanTheme.primaryGreen
+                                : const Color(0xFFB0B8C1),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          item.label,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: isSelected
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                            color: isSelected
+                                ? FinSpanTheme.primaryGreen
+                                : const Color(0xFFB0B8C1),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+        ),
       ),
     );
   }
@@ -1775,8 +1564,8 @@ class _ReturnBar {
   const _ReturnBar(this.age, this.returnPct);
 }
 
-class _ReturnData {
-  _ReturnData(this.year, this.percentChange);
-  final int year;
-  final double percentChange;
+class _NavItem {
+  final IconData icon;
+  final String label;
+  const _NavItem(this.icon, this.label);
 }

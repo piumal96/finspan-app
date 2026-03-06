@@ -1,4 +1,5 @@
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'firebase_options.dart';
 import 'theme/finspan_theme.dart';
@@ -12,8 +13,10 @@ void main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
   } catch (e) {
-    print('Firebase initialization failed: $e');
-    // We continue so the app still runs, but Firebase features will fail
+    if (kDebugMode) {
+      print('Firebase initialization failed: $e');
+    }
+    // Continue — the app still runs but Firebase features will be unavailable.
   }
 
   runApp(const FinSpanApp());
