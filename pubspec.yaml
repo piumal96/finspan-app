@@ -89,6 +89,12 @@ flutter:
     - assets/images/app_icon.png
     - assets/images/full_logo.png
     - assets/images/landing_illustration.png
+    - assets/images/carousel_1.png
+    - assets/images/carousel_2.png
+    - assets/images/carousel_3.png
+    - assets/images/carousel_1_nobg.png
+    - assets/images/carousel_2_nobg.png
+    - assets/images/carousel_3_nobg.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
