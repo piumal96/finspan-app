@@ -41,8 +41,15 @@ class AuthService {
 
   Future<UserCredential?> signInWithGoogle() async {
     try {
-      // Sign out first to force the account picker to appear every time
-      await _googleSignIn.signOut();
+      // disconnect() clears cached Google credentials so the account picker
+      // always appears, WITHOUT emitting a Firebase sign-out event.
+      // signOut() would briefly null the Firebase user, causing the AuthGate
+      // to unmount the dashboard and trigger the chart dispose crash.
+      try {
+        await _googleSignIn.disconnect();
+      } catch (_) {
+        // disconnect() throws if there is no previously signed-in account; ignore.
+      }
 
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       if (googleUser == null) return null; // User cancelled the picker
