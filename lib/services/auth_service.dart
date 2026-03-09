@@ -4,6 +4,15 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 class AuthService {
+  // ─── Singleton ─────────────────────────────────────────────────────────────
+  // A single shared instance ensures that the same GoogleSignIn object is used
+  // for disconnect() and signIn() calls.  Without this, a fresh GoogleSignIn
+  // created in a new AuthService() instance may not find the cached credential
+  // from a previous session, breaking the "always show account picker" logic.
+  static final AuthService _instance = AuthService._internal();
+  factory AuthService() => _instance;
+  AuthService._internal();
+
   // Access instance lazily to avoid crash if Firebase initialization failed
   FirebaseAuth get _auth {
     try {

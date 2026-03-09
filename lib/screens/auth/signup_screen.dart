@@ -49,6 +49,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool _agreedToTerms = false;
   bool _showTermsError = false;
 
+  // Keep recognizers as state fields so they are disposed exactly once.
+  final TapGestureRecognizer _userAgreementTap = TapGestureRecognizer();
+  final TapGestureRecognizer _privacyPolicyTap = TapGestureRecognizer();
+
   @override
   void dispose() {
     _emailController.dispose();
@@ -57,6 +61,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
     _emailFocus.dispose();
     _passwordFocus.dispose();
     _confirmPasswordFocus.dispose();
+    _userAgreementTap.dispose();
+    _privacyPolicyTap.dispose();
     super.dispose();
   }
 
@@ -604,7 +610,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       color: Color(0xFF004D40),
                       fontWeight: FontWeight.bold,
                     ),
-                    recognizer: TapGestureRecognizer()..onTap = () {},
+                    recognizer: _userAgreementTap,
                   ),
                   const TextSpan(text: ' & '),
                   TextSpan(
@@ -613,7 +619,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       color: Color(0xFF004D40),
                       fontWeight: FontWeight.bold,
                     ),
-                    recognizer: TapGestureRecognizer()..onTap = () {},
+                    recognizer: _privacyPolicyTap,
                   ),
                 ],
               ),
