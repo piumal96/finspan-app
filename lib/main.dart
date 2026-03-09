@@ -14,6 +14,30 @@ import 'theme/finspan_theme.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Suppress a debug-only Syncfusion flutter charts internal bug.
+  // When AuthGate transitions from MainDashboard → LandingScreen on sign-out,
+  // Syncfusion's CustomLayoutBuilderElement.unmount() calls markNeedsLayout()
+  // on a RenderChartFadeTransition that is already disposed.  Flutter's assert
+  // catches this in debug mode and surfaces it as a red-screen error, even
+  // though the app recovers correctly.  The assert is stripped in release builds
+  // so this never affects users.  We suppress only this specific error so the
+  // console stays clean while debugging other issues.
+  FlutterError.onError = (FlutterErrorDetails details) {
+    final description = details.exceptionAsString();
+    final stack = details.stack?.toString() ?? '';
+    if (description.contains('disposed RenderObject') &&
+        stack.contains('RenderChartFadeTransition')) {
+      if (kDebugMode) {
+        debugPrint(
+          '⚠️ [Syncfusion] Chart dispose warning (suppressed in debug): '
+          '${details.exception}',
+        );
+      }
+      return;
+    }
+    FlutterError.presentError(details);
+  };
+
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,

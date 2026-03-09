@@ -666,14 +666,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                         );
                         if (confirmed == true) {
+                          // Capture Navigator BEFORE the await. After signOut()
+                          // returns, this widget may be in the inactive state
+                          // (context.mounted returns true for inactive elements,
+                          // but Navigator.of(context) would throw). Using the
+                          // pre-captured NavigatorState avoids the crash.
+                          final navigator = Navigator.of(context);
                           await AuthService().signOut();
-                          // Pop all pushed routes so AuthGate's LandingScreen
-                          // is revealed. Works whether MainDashboard is the
-                          // AuthGate route content or a pushed Route1 above it.
-                          if (context.mounted) {
-                            Navigator.of(context)
-                                .popUntil((route) => route.isFirst);
-                          }
+                          // Pop back to root so AuthGate's LandingScreen is
+                          // visible. No-op for returning users whose dashboard
+                          // lives in Route0; required for new users where
+                          // MainDashboard is pushed as Route1 after onboarding.
+                          navigator.popUntil((route) => route.isFirst);
                         }
                       },
                     ),
@@ -863,13 +867,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
 
     if (confirmed == true && context.mounted) {
+      // Capture Navigator before the awaits — same reason as sign-out:
+      // context.mounted returns true for inactive elements but
+      // Navigator.of(context) would throw on a deactivated element.
+      final navigator = Navigator.of(context);
       try {
         // Delete the Firebase account and sign out.
         await FirebaseAuth.instance.currentUser?.delete();
         await AuthService().signOut();
-        if (context.mounted) {
-          Navigator.of(context).popUntil((route) => route.isFirst);
-        }
+        navigator.popUntil((route) => route.isFirst);
       } on FirebaseAuthException catch (e) {
         if (context.mounted) {
           try {
