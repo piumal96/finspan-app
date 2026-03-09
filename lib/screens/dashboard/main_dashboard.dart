@@ -1303,6 +1303,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                       innerRadius: '65%',
                       radius: '100%',
                       strokeWidth: 0,
+                      animationDuration: 0,
                     ),
                   ],
                 ),
