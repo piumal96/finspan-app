@@ -8,7 +8,6 @@ import '../../services/auth_service.dart';
 import '../../utils/response_utils.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
-// Official Google "G" SVG
 const String _kGoogleSvg = '''
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
   <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.08 17.74 9.5 24 9.5z"/>
@@ -56,7 +55,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     super.dispose();
   }
 
-  // ─── Email / Password Sign-Up ─────────────────────────────────────────────
+  // ─── Sign-Up ──────────────────────────────────────────────────────────────
 
   Future<void> _handleSignUp() async {
     if (!_formKey.currentState!.validate()) return;
@@ -83,14 +82,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
-
       if (context.mounted) {
         ResponseUtils.showPremiumSnackBar(
           context,
           'Account created! Welcome to FinSPAN.',
           isSuccess: true,
         );
-        // AuthGate's StreamBuilder detects the new user and navigates automatically.
       }
     } on FirebaseAuthException catch (e) {
       if (context.mounted) {
@@ -100,7 +97,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           isError: true,
         );
       }
-    } catch (e) {
+    } catch (_) {
       if (context.mounted) {
         ResponseUtils.showPremiumSnackBar(
           context,
@@ -128,7 +125,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
     setState(() => _isGoogleLoading = true);
     try {
       await _authService.signInWithGoogle();
-      // AuthGate's StreamBuilder navigates automatically on success.
     } on FirebaseAuthException catch (e) {
       if (context.mounted) {
         ResponseUtils.showPremiumSnackBar(
@@ -158,21 +154,31 @@ class _SignUpScreenState extends State<SignUpScreen> {
   @override
   Widget build(BuildContext context) {
     final bool anyLoading = _isLoading || _isGoogleLoading;
+    final double screenH = MediaQuery.of(context).size.height;
+
+    // Adaptive spacing: tight on small screens (< 700px), normal otherwise
+    final bool compact = screenH < 700;
+    final double gap = compact ? 12.0 : 16.0;
+    final double sectionGap = compact ? 16.0 : 24.0;
+    final double fieldHeight = compact ? 48.0 : 52.0;
+    final double logoSize = compact ? 22.0 : 26.0;
+    final double titleSize = compact ? 18.0 : 22.0;
 
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
         child: Column(
           children: [
-            // Back button row
-            Padding(
-              padding: const EdgeInsets.only(left: 8.0, top: 4.0),
+            // Back button
+            SizedBox(
+              height: 44,
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: IconButton(
-                  icon: const Icon(LucideIcons.arrowLeft, size: 22),
+                  icon: const Icon(LucideIcons.arrowLeft, size: 20),
                   color: FinSpanTheme.charcoal,
                   onPressed: anyLoading ? null : () => Navigator.maybePop(context),
+                  visualDensity: VisualDensity.compact,
                 ),
               ),
             ),
@@ -182,143 +188,132 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   constraints: const BoxConstraints(maxWidth: 480),
                   child: SingleChildScrollView(
                     physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.only(
-                      left: 24.0,
-                      right: 24.0,
-                      bottom: 40.0,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 24.0,
+                      vertical: compact ? 4.0 : 8.0,
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        const SizedBox(height: 8),
-
                         // Logo
                         Hero(
                           tag: 'finspan_logo',
                           child: Material(
                             color: Colors.transparent,
                             child: Text.rich(
-                              TextSpan(
-                                children: [
-                                  const TextSpan(
-                                    text: 'Fin',
-                                    style: TextStyle(
-                                      fontSize: 28,
-                                      fontWeight: FontWeight.w900,
-                                      color: FinSpanTheme.charcoal,
-                                      letterSpacing: -1,
-                                    ),
+                              TextSpan(children: [
+                                TextSpan(
+                                  text: 'Fin',
+                                  style: TextStyle(
+                                    fontSize: logoSize,
+                                    fontWeight: FontWeight.w900,
+                                    color: FinSpanTheme.charcoal,
+                                    letterSpacing: -0.8,
                                   ),
-                                  TextSpan(
-                                    text: 'SPAN',
-                                    style: TextStyle(
-                                      fontSize: 28,
-                                      fontWeight: FontWeight.w900,
-                                      color: FinSpanTheme.primaryGreen,
-                                      letterSpacing: -1,
-                                    ),
+                                ),
+                                TextSpan(
+                                  text: 'SPAN',
+                                  style: TextStyle(
+                                    fontSize: logoSize,
+                                    fontWeight: FontWeight.w900,
+                                    color: FinSpanTheme.primaryGreen,
+                                    letterSpacing: -0.8,
                                   ),
-                                ],
-                              ),
+                                ),
+                              ]),
                             ),
                           ),
                         ),
-                        const SizedBox(height: 24),
+                        SizedBox(height: compact ? 12 : 16),
 
                         // Title
-                        const Text(
+                        Text(
                           'Create new account',
                           style: TextStyle(
-                            fontSize: 22,
+                            fontSize: titleSize,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF004D40),
-                            letterSpacing: -0.5,
+                            color: const Color(0xFF004D40),
+                            letterSpacing: -0.4,
                           ),
                         ),
-                        const SizedBox(height: 28),
+                        SizedBox(height: sectionGap),
 
+                        // Form
                         Form(
                           key: _formKey,
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               // Email
-                              _fieldLabel('Email Address'),
-                              const SizedBox(height: 8),
-                              TextFormField(
+                              _label('Email Address'),
+                              SizedBox(height: 6),
+                              _field(
                                 controller: _emailController,
                                 focusNode: _emailFocus,
+                                hint: 'Enter your email',
                                 keyboardType: TextInputType.emailAddress,
+                                action: TextInputAction.next,
+                                height: fieldHeight,
                                 enabled: !anyLoading,
-                                textInputAction: TextInputAction.next,
-                                onFieldSubmitted: (_) =>
-                                    FocusScope.of(context)
-                                        .requestFocus(_passwordFocus),
-                                decoration: _inputDecoration('Enter your email'),
+                                onSubmitted: (_) => FocusScope.of(context)
+                                    .requestFocus(_passwordFocus),
                                 validator: (v) {
                                   if (v == null || v.trim().isEmpty) {
                                     return 'Email is required';
                                   }
-                                  final emailRegex = RegExp(
+                                  if (!RegExp(
                                     r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
-                                  );
-                                  if (!emailRegex.hasMatch(v.trim())) {
-                                    return 'Enter a valid email address';
+                                  ).hasMatch(v.trim())) {
+                                    return 'Enter a valid email';
                                   }
                                   return null;
                                 },
                               ),
-                              const SizedBox(height: 20),
+                              SizedBox(height: gap),
 
                               // Password
-                              _fieldLabel('Password'),
-                              const SizedBox(height: 8),
-                              TextFormField(
+                              _label('Password'),
+                              SizedBox(height: 6),
+                              _field(
                                 controller: _passwordController,
                                 focusNode: _passwordFocus,
-                                obscureText: _obscurePassword,
+                                hint: 'Min 8 characters',
+                                obscure: _obscurePassword,
+                                action: TextInputAction.next,
+                                height: fieldHeight,
                                 enabled: !anyLoading,
-                                textInputAction: TextInputAction.next,
-                                onFieldSubmitted: (_) => FocusScope.of(context)
+                                onSubmitted: (_) => FocusScope.of(context)
                                     .requestFocus(_confirmPasswordFocus),
-                                decoration: _inputDecoration(
-                                  'Min 8 characters',
-                                  isPassword: true,
-                                  obscure: _obscurePassword,
-                                  onToggle: () => setState(
-                                      () => _obscurePassword = !_obscurePassword),
-                                ),
+                                onToggleObscure: () => setState(
+                                    () => _obscurePassword = !_obscurePassword),
                                 validator: (v) {
                                   if (v == null || v.isEmpty) {
                                     return 'Password is required';
                                   }
                                   if (v.length < 8) {
-                                    return 'Password must be at least 8 characters';
+                                    return 'At least 8 characters';
                                   }
                                   return null;
                                 },
                               ),
-                              const SizedBox(height: 20),
+                              SizedBox(height: gap),
 
                               // Confirm Password
-                              _fieldLabel('Confirm Password'),
-                              const SizedBox(height: 8),
-                              TextFormField(
+                              _label('Confirm Password'),
+                              SizedBox(height: 6),
+                              _field(
                                 controller: _confirmPasswordController,
                                 focusNode: _confirmPasswordFocus,
-                                obscureText: _obscureConfirmPassword,
+                                hint: 'Re-enter password',
+                                obscure: _obscureConfirmPassword,
+                                action: TextInputAction.done,
+                                height: fieldHeight,
                                 enabled: !anyLoading,
-                                textInputAction: TextInputAction.done,
-                                onFieldSubmitted: (_) =>
+                                onSubmitted: (_) =>
                                     FocusScope.of(context).unfocus(),
-                                decoration: _inputDecoration(
-                                  'Re-enter your password',
-                                  isPassword: true,
-                                  obscure: _obscureConfirmPassword,
-                                  onToggle: () => setState(() =>
-                                      _obscureConfirmPassword =
-                                          !_obscureConfirmPassword),
-                                ),
+                                onToggleObscure: () => setState(() =>
+                                    _obscureConfirmPassword =
+                                        !_obscureConfirmPassword),
                                 validator: (v) {
                                   if (v == null || v.isEmpty) {
                                     return 'Please confirm your password';
@@ -329,34 +324,38 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                   return null;
                                 },
                               ),
-                              const SizedBox(height: 20),
+                              SizedBox(height: gap),
 
-                              // Terms Checkbox
+                              // Terms checkbox
                               _buildTermsCheckbox(),
                               if (_showTermsError)
                                 Padding(
-                                  padding: const EdgeInsets.only(top: 6, left: 4),
+                                  padding:
+                                      const EdgeInsets.only(top: 4, left: 4),
                                   child: Text(
-                                    'You must agree to the terms to continue',
+                                    'You must agree to the terms',
                                     style: TextStyle(
                                       color: Colors.red.shade600,
-                                      fontSize: 12,
+                                      fontSize: 11,
                                     ),
                                   ),
                                 ),
-                              const SizedBox(height: 28),
+                              SizedBox(height: sectionGap),
 
-                              // Sign Up Button
+                              // Sign Up button
                               SizedBox(
                                 width: double.infinity,
-                                height: 56,
+                                height: compact ? 50 : 54,
                                 child: ElevatedButton(
-                                  onPressed: anyLoading ? null : _handleSignUp,
+                                  onPressed:
+                                      anyLoading ? null : _handleSignUp,
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: FinSpanTheme.primaryGreen,
+                                    backgroundColor:
+                                        FinSpanTheme.primaryGreen,
                                     foregroundColor: Colors.white,
                                     shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(30),
+                                      borderRadius:
+                                          BorderRadius.circular(30),
                                     ),
                                     elevation: 0,
                                   ),
@@ -367,58 +366,59 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                           child: CircularProgressIndicator(
                                             strokeWidth: 2,
                                             valueColor:
-                                                AlwaysStoppedAnimation<Color>(
-                                                    Colors.white),
+                                                AlwaysStoppedAnimation<
+                                                    Color>(Colors.white),
                                           ),
                                         )
                                       : const Text(
                                           'Sign Up',
                                           style: TextStyle(
-                                            fontSize: 16,
+                                            fontSize: 15,
                                             fontWeight: FontWeight.bold,
                                           ),
                                         ),
                                 ),
                               ),
-                              const SizedBox(height: 28),
+                              SizedBox(height: sectionGap),
 
                               // Social divider
                               const Center(
                                 child: Text(
                                   'or sign up with',
                                   style: TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 12,
-                                  ),
+                                      color: Colors.grey, fontSize: 12),
                                 ),
                               ),
-                              const SizedBox(height: 20),
+                              SizedBox(height: compact ? 12 : 16),
 
-                              // Social Buttons
+                              // Social buttons
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   _buildGoogleCircle(anyLoading),
-                                  const SizedBox(width: 24),
+                                  const SizedBox(width: 20),
                                   _buildFacebookComingSoon(),
                                 ],
                               ),
-                              const SizedBox(height: 40),
+                              SizedBox(height: sectionGap),
 
                               // Footer
                               Center(
                                 child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.center,
                                   children: [
                                     const Text(
                                       'Already have an account?  ',
                                       style: TextStyle(
-                                          color: Colors.grey, fontSize: 13),
+                                          color: Colors.grey,
+                                          fontSize: 13),
                                     ),
                                     GestureDetector(
                                       onTap: anyLoading
                                           ? null
-                                          : () => Navigator.maybePop(context),
+                                          : () =>
+                                              Navigator.maybePop(context),
                                       child: const Text(
                                         'Sign In',
                                         style: TextStyle(
@@ -431,7 +431,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                   ],
                                 ),
                               ),
-                              const SizedBox(height: 24),
+                              SizedBox(height: compact ? 12 : 20),
                             ],
                           ),
                         ),
@@ -447,87 +447,109 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  // ─── Helpers ──────────────────────────────────────────────────────────────
+  // ─── Widget helpers ───────────────────────────────────────────────────────
 
-  Widget _fieldLabel(String label) {
-    return Text(
-      label,
-      style: const TextStyle(
-        fontSize: 14,
-        fontWeight: FontWeight.w600,
-        color: FinSpanTheme.charcoal,
-      ),
-    );
-  }
+  Widget _label(String text) => Text(
+        text,
+        style: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: FinSpanTheme.charcoal,
+        ),
+      );
 
-  InputDecoration _inputDecoration(
-    String hint, {
-    bool isPassword = false,
-    bool obscure = true,
-    VoidCallback? onToggle,
+  Widget _field({
+    required TextEditingController controller,
+    required FocusNode focusNode,
+    required String hint,
+    required bool enabled,
+    required double height,
+    TextInputType keyboardType = TextInputType.text,
+    TextInputAction action = TextInputAction.next,
+    bool obscure = false,
+    VoidCallback? onToggleObscure,
+    ValueChanged<String>? onSubmitted,
+    FormFieldValidator<String>? validator,
   }) {
-    return InputDecoration(
-      hintText: hint,
-      hintStyle: TextStyle(color: Colors.grey.shade400),
-      contentPadding:
-          const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      suffixIcon: isPassword && onToggle != null
-          ? IconButton(
-              icon: Icon(
-                obscure ? LucideIcons.eyeOff : LucideIcons.eye,
-                size: 20,
-                color: Colors.grey.shade600,
-              ),
-              onPressed: onToggle,
-            )
-          : null,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.grey.shade300),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.grey.shade300),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide:
-            const BorderSide(color: Color(0xFF004D40), width: 1.5),
-      ),
-      errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.red.shade400),
-      ),
-      focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.red.shade400, width: 1.5),
+    return SizedBox(
+      height: height + 24, // account for error text
+      child: TextFormField(
+        controller: controller,
+        focusNode: focusNode,
+        keyboardType: keyboardType,
+        obscureText: obscure,
+        textInputAction: action,
+        enabled: enabled,
+        onFieldSubmitted: onSubmitted,
+        validator: validator,
+        style: const TextStyle(fontSize: 14),
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+          isDense: true,
+          contentPadding: EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: (height - 14) / 2,
+          ),
+          suffixIcon: onToggleObscure != null
+              ? IconButton(
+                  icon: Icon(
+                    obscure ? LucideIcons.eyeOff : LucideIcons.eye,
+                    size: 18,
+                    color: Colors.grey.shade500,
+                  ),
+                  onPressed: onToggleObscure,
+                  visualDensity: VisualDensity.compact,
+                )
+              : null,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: Colors.grey.shade300),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: Colors.grey.shade300),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide:
+                const BorderSide(color: Color(0xFF004D40), width: 1.5),
+          ),
+          errorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: Colors.red.shade400),
+          ),
+          focusedErrorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: Colors.red.shade400, width: 1.5),
+          ),
+          errorStyle: const TextStyle(fontSize: 11, height: 1.2),
+        ),
       ),
     );
   }
 
   Widget _buildTermsCheckbox() {
     return GestureDetector(
-      onTap: () {
-        setState(() {
-          _agreedToTerms = !_agreedToTerms;
-          if (_agreedToTerms) _showTermsError = false;
-        });
-      },
+      onTap: () => setState(() {
+        _agreedToTerms = !_agreedToTerms;
+        if (_agreedToTerms) _showTermsError = false;
+      }),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           SizedBox(
-            width: 24,
-            height: 24,
+            width: 20,
+            height: 20,
             child: Checkbox(
               value: _agreedToTerms,
-              onChanged: (v) {
-                setState(() {
-                  _agreedToTerms = v ?? false;
-                  if (_agreedToTerms) _showTermsError = false;
-                });
-              },
+              onChanged: (v) => setState(() {
+                _agreedToTerms = v ?? false;
+                if (_agreedToTerms) _showTermsError = false;
+              }),
               activeColor: FinSpanTheme.primaryGreen,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.compact,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(4),
               ),
@@ -537,9 +559,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
           Expanded(
             child: Text.rich(
               TextSpan(
-                style: const TextStyle(fontSize: 13, color: Colors.grey),
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
                 children: [
-                  const TextSpan(text: "I've read and agreed to the "),
+                  const TextSpan(text: "I agree to the "),
                   TextSpan(
                     text: 'User Agreement',
                     style: const TextStyle(
@@ -548,7 +570,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     ),
                     recognizer: TapGestureRecognizer()..onTap = () {},
                   ),
-                  const TextSpan(text: ' and '),
+                  const TextSpan(text: ' & '),
                   TextSpan(
                     text: 'Privacy Policy',
                     style: const TextStyle(
@@ -568,8 +590,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   Widget _buildGoogleCircle(bool disabled) {
     return SizedBox(
-      width: 56,
-      height: 56,
+      width: 52,
+      height: 52,
       child: _isGoogleLoading
           ? Container(
               decoration: BoxDecoration(
@@ -578,11 +600,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
               ),
               child: const Center(
                 child: SizedBox(
-                  width: 20,
-                  height: 20,
+                  width: 18,
+                  height: 18,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF004D40)),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                        Color(0xFF004D40)),
                   ),
                 ),
               ),
@@ -594,11 +617,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 side: BorderSide(color: Colors.grey.shade200),
                 backgroundColor: Colors.white,
               ),
-              icon: SvgPicture.string(
-                _kGoogleSvg,
-                width: 22,
-                height: 22,
-              ),
+              icon: SvgPicture.string(_kGoogleSvg, width: 20, height: 20),
             ),
     );
   }
@@ -608,8 +627,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
       clipBehavior: Clip.none,
       children: [
         SizedBox(
-          width: 56,
-          height: 56,
+          width: 52,
+          height: 52,
           child: IconButton.outlined(
             onPressed: null,
             style: IconButton.styleFrom(
@@ -619,7 +638,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
             ),
             icon: Icon(
               LucideIcons.facebook,
-              size: 22,
+              size: 20,
               color: Colors.grey.shade400,
             ),
           ),

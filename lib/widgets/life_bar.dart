@@ -412,46 +412,58 @@ class _FinSpanLifeBarState extends State<FinSpanLifeBar> {
   }
 
   Widget _buildDurationEvent(LifeEvent event, double width) {
-    return Container(
-      width: width,
-      height: 28,
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      decoration: BoxDecoration(
-        color: _getEventColor(event.type).withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: _getEventColor(event.type).withValues(alpha: 0.5),
+    final color = _getEventColor(event.type);
+    // Decide what to render based on available width to avoid overflow.
+    final bool showIcon = width >= 24;
+    final bool showLabel = width >= 48;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        width: width,
+        height: 28,
+        padding: EdgeInsets.symmetric(horizontal: showIcon ? 4 : 0),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withValues(alpha: 0.5)),
         ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 20,
-            height: 20,
-            decoration: BoxDecoration(
-              color: _getEventColor(event.type),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              _getEventIcon(event.type),
-              size: 10,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(width: 4),
-          Flexible(
-            child: Text(
-              event.name,
-              style: const TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.bold,
-                color: FinSpanTheme.charcoal,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
+        child: showIcon
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 20,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      color: color,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      _getEventIcon(event.type),
+                      size: 10,
+                      color: Colors.white,
+                    ),
+                  ),
+                  if (showLabel) ...[
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                        event.name,
+                        style: const TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                          color: FinSpanTheme.charcoal,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                    ),
+                  ],
+                ],
+              )
+            : const SizedBox.shrink(),
       ),
     );
   }
