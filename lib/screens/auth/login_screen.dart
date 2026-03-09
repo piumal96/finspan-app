@@ -68,7 +68,10 @@ class _LoginScreenState extends State<LoginScreen> {
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
-      // AuthGate's StreamBuilder detects the new user and navigates automatically.
+      if (context.mounted) {
+        // Pop LoginScreen back to root so AuthGate can render the dashboard.
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
     } on FirebaseAuthException catch (e) {
       if (context.mounted) {
         ResponseUtils.showPremiumSnackBar(
@@ -104,8 +107,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() => _isGoogleLoading = true);
     try {
-      await _authService.signInWithGoogle();
-      // AuthGate's StreamBuilder navigates automatically on success.
+      final result = await _authService.signInWithGoogle();
+      if (result != null && context.mounted) {
+        // Pop LoginScreen back to root so AuthGate renders the dashboard.
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
     } on FirebaseAuthException catch (e) {
       if (context.mounted) {
         ResponseUtils.showPremiumSnackBar(

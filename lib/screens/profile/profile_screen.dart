@@ -666,10 +666,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                         );
                         if (confirmed == true) {
-                          // Signs out from both Firebase and Google Sign-In.
-                          // AuthGate's StreamBuilder automatically navigates
-                          // back to LandingScreen — no manual push needed.
                           await AuthService().signOut();
+                          // Pop all pushed routes so AuthGate's LandingScreen
+                          // is revealed. Works whether MainDashboard is the
+                          // AuthGate route content or a pushed Route1 above it.
+                          if (context.mounted) {
+                            Navigator.of(context)
+                                .popUntil((route) => route.isFirst);
+                          }
                         }
                       },
                     ),
@@ -860,11 +864,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (confirmed == true && context.mounted) {
       try {
-        // Delete the Firebase account, then sign out from Google too.
-        // AuthGate's StreamBuilder detects the null user and navigates
-        // back to LandingScreen automatically — no manual push needed.
+        // Delete the Firebase account and sign out.
         await FirebaseAuth.instance.currentUser?.delete();
         await AuthService().signOut();
+        if (context.mounted) {
+          Navigator.of(context).popUntil((route) => route.isFirst);
+        }
       } on FirebaseAuthException catch (e) {
         if (context.mounted) {
           try {

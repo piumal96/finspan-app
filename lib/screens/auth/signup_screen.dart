@@ -119,6 +119,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
           'Account created! Welcome to FinSPAN.',
           isSuccess: true,
         );
+        // Pop SignUpScreen back to root so AuthGate can render OnboardingWrapper.
+        // Without this the user stays stuck on SignUpScreen and pressing back
+        // would flash LandingScreen before AuthGate reacts.
+        Navigator.of(context).popUntil((route) => route.isFirst);
       }
     } on FirebaseAuthException catch (e) {
       if (context.mounted) {
@@ -155,7 +159,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
     setState(() => _isGoogleLoading = true);
     try {
-      await _authService.signInWithGoogle();
+      final result = await _authService.signInWithGoogle();
+      if (result != null && context.mounted) {
+        // Pop SignUpScreen back to root so AuthGate renders OnboardingWrapper.
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
     } on FirebaseAuthException catch (e) {
       if (context.mounted) {
         ResponseUtils.showPremiumSnackBar(
