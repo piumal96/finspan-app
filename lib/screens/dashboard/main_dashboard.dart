@@ -129,6 +129,20 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
         numSims: 100,
       );
       if (mounted) {
+        if (result == null || result.stats.isEmpty) {
+          // API returned but produced no usable stats — treat as failure
+          setState(() {
+            _homeEnableMonteCarlo = false;
+            _mcIsLoading = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Monte Carlo returned no data. Please check your plan inputs.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          return;
+        }
         setState(() {
           _apiMcResult = result;
           _mcIsLoading = false;
@@ -949,6 +963,178 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                               ),
                             ],
                           ),
+
+                          // ── Outcome Distribution (histogram) ─────────────
+                          if (_apiMcResult!.allRuns.isNotEmpty) ...[
+                            const SizedBox(height: 24),
+                            const Text(
+                              'Outcome Distribution',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                              ),
+                            ),
+                            Text(
+                              '${_apiMcResult!.numSimulations} simulations',
+                              style: const TextStyle(
+                                color: FinSpanTheme.bodyGray,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Builder(builder: (_) {
+                              final finalNetWorths = _apiMcResult!.allRuns
+                                  .map((r) => r.finalNw)
+                                  .toList();
+                              final minNW = finalNetWorths
+                                  .reduce((a, b) => a < b ? a : b);
+                              final maxNW = finalNetWorths
+                                  .reduce((a, b) => a > b ? a : b);
+                              const int numBins = 12;
+                              final binSize = maxNW == minNW
+                                  ? 1.0
+                                  : (maxNW - minNW) / numBins;
+                              final List<_BinData> bins =
+                                  List.generate(numBins, (i) {
+                                final lo = minNW + i * binSize;
+                                final hi = lo + binSize;
+                                final count = finalNetWorths
+                                    .where((nw) => nw >= lo &&
+                                        (i == numBins - 1 ? nw <= hi : nw < hi))
+                                    .length;
+                                final label = lo.abs() >= 1000000
+                                    ? '${(lo / 1000000).toStringAsFixed(1)}M'
+                                    : '${(lo / 1000).toInt()}K';
+                                return _BinData(label, count);
+                              });
+                              return SizedBox(
+                                height: 160,
+                                child: SfCartesianChart(
+                                  plotAreaBorderWidth: 0,
+                                  margin: EdgeInsets.zero,
+                                  primaryXAxis: CategoryAxis(
+                                    majorGridLines:
+                                        const MajorGridLines(width: 0),
+                                    labelRotation: -45,
+                                    labelStyle: const TextStyle(fontSize: 8),
+                                  ),
+                                  primaryYAxis: NumericAxis(
+                                    axisLine: const AxisLine(width: 0),
+                                    majorTickLines:
+                                        const MajorTickLines(size: 0),
+                                    axisLabelFormatter:
+                                        (AxisLabelRenderDetails d) {
+                                      return ChartAxisLabel(
+                                          d.value.toInt().toString(), null);
+                                    },
+                                  ),
+                                  series: <CartesianSeries>[
+                                    ColumnSeries<_BinData, String>(
+                                      dataSource: bins,
+                                      xValueMapper: (d, _) => d.label,
+                                      yValueMapper: (d, _) => d.count,
+                                      color: FinSpanTheme.primaryGreen
+                                          .withValues(alpha: 0.8),
+                                      borderRadius: BorderRadius.circular(4),
+                                      animationDuration: 0,
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }),
+                          ],
+
+                          // ── Market Returns for selected-percentile run ────
+                          if (_apiMcResult!.allRuns.isNotEmpty) ...[
+                            const SizedBox(height: 24),
+                            Text(
+                              'Market Returns',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                              ),
+                            ),
+                            Text(
+                              '${_luckSliderValue.toInt()}th percentile scenario',
+                              style: const TextStyle(
+                                color: FinSpanTheme.bodyGray,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Builder(builder: (_) {
+                              final sortedRuns = [
+                                ..._apiMcResult!.allRuns
+                              ]..sort((a, b) => a.finalNw.compareTo(b.finalNw));
+                              final runIndex = ((_luckSliderValue / 100) *
+                                      (sortedRuns.length - 1))
+                                  .round()
+                                  .clamp(0, sortedRuns.length - 1);
+                              final selectedRun = sortedRuns[runIndex];
+                              final List<_ReturnBar> returnBars = [];
+                              for (int i = 1;
+                                  i < selectedRun.data.length;
+                                  i++) {
+                                final prev = selectedRun.data[i - 1].netWorth;
+                                final curr = selectedRun.data[i].netWorth;
+                                final pct = prev > 0
+                                    ? ((curr - prev) / prev * 100)
+                                    : 0.0;
+                                returnBars.add(_ReturnBar(
+                                    selectedRun.data[i].age, pct));
+                              }
+                              return SizedBox(
+                                height: 160,
+                                child: SfCartesianChart(
+                                  plotAreaBorderWidth: 0,
+                                  margin: EdgeInsets.zero,
+                                  primaryXAxis: NumericAxis(
+                                    majorGridLines:
+                                        const MajorGridLines(width: 0),
+                                    axisLabelFormatter:
+                                        (AxisLabelRenderDetails d) {
+                                      return ChartAxisLabel(
+                                          'Age ${d.value.toInt()}', null);
+                                    },
+                                  ),
+                                  primaryYAxis: NumericAxis(
+                                    axisLine: const AxisLine(width: 0),
+                                    majorTickLines:
+                                        const MajorTickLines(size: 0),
+                                    axisLabelFormatter:
+                                        (AxisLabelRenderDetails d) {
+                                      return ChartAxisLabel(
+                                          '${d.value.toInt()}%', null);
+                                    },
+                                  ),
+                                  series: <CartesianSeries>[
+                                    ColumnSeries<_ReturnBar, double>(
+                                      dataSource: returnBars,
+                                      xValueMapper: (d, _) => d.age.toDouble(),
+                                      yValueMapper: (d, _) => d.returnPct,
+                                      pointColorMapper: (d, _) =>
+                                          d.returnPct >= 0
+                                              ? FinSpanTheme.primaryGreen
+                                                  .withValues(alpha: 0.85)
+                                              : Colors.red
+                                                  .withValues(alpha: 0.85),
+                                      borderRadius: BorderRadius.circular(2),
+                                      animationDuration: 0,
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }),
+                            const SizedBox(height: 10),
+                            Wrap(
+                              spacing: 10,
+                              children: [
+                                _badgeChip(
+                                    '↑ Positive', FinSpanTheme.primaryGreen),
+                                _badgeChip('↓ Negative', Colors.red),
+                              ],
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -1670,6 +1856,18 @@ class _McChartPoint {
   final double age;
   final double value;
   const _McChartPoint(this.age, this.value);
+}
+
+class _BinData {
+  final String label;
+  final int count;
+  const _BinData(this.label, this.count);
+}
+
+class _ReturnBar {
+  final int age;
+  final double returnPct;
+  const _ReturnBar(this.age, this.returnPct);
 }
 
 class _NavItem {

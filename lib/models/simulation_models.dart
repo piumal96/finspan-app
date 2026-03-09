@@ -480,17 +480,57 @@ class MonteCarloStat {
   }
 }
 
+/// One year of data within a single Monte Carlo run — used for the market-return chart.
+class MonteCarloRunYear {
+  final int age;
+  final double netWorth;
+  const MonteCarloRunYear(this.age, this.netWorth);
+}
+
+/// A single simulation run returned in `all_runs[]` by the backend.
+class MonteCarloRun {
+  final int runId;
+  final double finalNw;
+  final List<MonteCarloRunYear> data;
+
+  const MonteCarloRun({
+    required this.runId,
+    required this.finalNw,
+    required this.data,
+  });
+
+  factory MonteCarloRun.fromJson(Map<String, dynamic> json) {
+    final rawData = json['data'] as List? ?? [];
+    return MonteCarloRun(
+      runId: (json['run_id'] ?? 0).toInt(),
+      finalNw: (json['final_nw'] ?? 0).toDouble(),
+      data: rawData
+          .map(
+            (y) => MonteCarloRunYear(
+              (y['P1_Age'] ?? 0).toInt(),
+              (y['Net_Worth'] ?? 0).toDouble(),
+            ),
+          )
+          .toList(),
+    );
+  }
+}
+
 class MonteCarloResult {
   final double successRate;
   final List<MonteCarloStat> stats;
   final int numSimulations;
   final double volatility;
+  /// Individual simulation runs — used for the outcome-distribution histogram
+  /// and the market-return bar chart in the Luck Slider sheet.
+  final List<MonteCarloRun> allRuns;
 
   MonteCarloResult({
     required this.successRate,
     required this.stats,
     required this.numSimulations,
     required this.volatility,
+    this.allRuns = const [],
   });
 
   factory MonteCarloResult.fromJson(Map<String, dynamic> json) {
@@ -501,6 +541,9 @@ class MonteCarloResult {
           .toList(),
       numSimulations: (json['num_simulations'] ?? 100).toInt(),
       volatility: (json['volatility'] ?? 0.15).toDouble(),
+      allRuns: (json['all_runs'] as List? ?? [])
+          .map((r) => MonteCarloRun.fromJson(r))
+          .toList(),
     );
   }
 }
