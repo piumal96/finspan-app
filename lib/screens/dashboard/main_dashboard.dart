@@ -58,6 +58,8 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
   List<_McChartPoint> _mcP90Points = [];
   List<_McChartPoint> _mcMedianPoints = [];
   List<_McChartPoint> _mcP10Points = [];
+  // Combined high/low band data for the P10→P90 uncertainty range area
+  List<_McBandPoint> _mcBandPoints = [];
 
   @override
   void initState() {
@@ -84,6 +86,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
       _mcP90Points = [];
       _mcMedianPoints = [];
       _mcP10Points = [];
+      _mcBandPoints = [];
       return;
     }
     final startAge = (_currentData.currentAge).toDouble();
@@ -102,6 +105,16 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
         .asMap()
         .entries
         .map((e) => _McChartPoint(startAge + e.key, e.value.netWorthP10))
+        .toList();
+    // Band = filled area between P10 (low) and P90 (high)
+    _mcBandPoints = stats
+        .asMap()
+        .entries
+        .map((e) => _McBandPoint(
+              startAge + e.key,
+              e.value.netWorthP10,
+              e.value.netWorthP90,
+            ))
         .toList();
   }
 
@@ -1148,6 +1161,45 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
     );
   }
 
+  Color _successColor(double rate) {
+    if (rate >= 80) return FinSpanTheme.primaryGreen;
+    if (rate >= 50) return Colors.orange;
+    return Colors.redAccent;
+  }
+
+  Widget _statPill(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 9,
+              color: color,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.3,
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 11,
+              color: color,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _badgeChip(String label, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1165,12 +1217,6 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
         ),
       ),
     );
-  }
-
-  Color _getSuccessColor(double rate) {
-    if (rate >= 80) return FinSpanTheme.vibrantGreen;
-    if (rate >= 50) return Colors.orange;
-    return Colors.redAccent;
   }
 
   Widget _buildStatsGrid(
@@ -1303,56 +1349,118 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
         ? 10000000
         : _homeWealthData.map((d) => d.total).reduce((a, b) => a > b ? a : b);
     if (mcActive && _mcP90Points.isNotEmpty) {
-      final p90Max = _mcP90Points.map((d) => d.value).reduce((a, b) => a > b ? a : b);
+      final p90Max =
+          _mcP90Points.map((d) => d.value).reduce((a, b) => a > b ? a : b);
       if (p90Max > maxTotal) maxTotal = p90Max;
     }
     final dynamicMaxY = (maxTotal * 1.2).clamp(10000.0, 2000000000.0);
+
+    String fmt(double v) {
+      if (v >= 1000000) return '\$${(v / 1000000).toStringAsFixed(1)}M';
+      if (v >= 1000) return '\$${(v / 1000).toInt()}K';
+      return '\$${v.toStringAsFixed(0)}';
+    }
 
     return FinSpanCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Header ────────────────────────────────────────────────────────
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Wealth Trajectory',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
-                  Text(
-                    mcActive
-                        ? 'Monte Carlo overlay · ${_apiMcResult!.successRate.toStringAsFixed(0)}% success'
-                        : 'Deterministic projection',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: mcActive
-                          ? FinSpanTheme.primaryGreen
-                          : FinSpanTheme.bodyGray,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Wealth Trajectory',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                        color: FinSpanTheme.charcoal,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      mcActive
+                          ? 'Based on your simulation results'
+                          : 'Based on your current plan',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: FinSpanTheme.bodyGray,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Success-rate badge (MC active) or Simulator shortcut
+              if (mcActive) ...[
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _successColor(_apiMcResult!.successRate)
+                        .withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: _successColor(_apiMcResult!.successRate)
+                          .withValues(alpha: 0.4),
                     ),
                   ),
-                ],
-              ),
-              if (mcActive)
-                TextButton.icon(
-                  onPressed: _showLuckSliderSheet,
-                  icon: const Icon(LucideIcons.settings2, size: 14),
-                  label: const Text('Luck', style: TextStyle(fontSize: 12)),
-                  style: TextButton.styleFrom(
-                    foregroundColor: FinSpanTheme.primaryGreen,
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  child: Text(
+                    '${_apiMcResult!.successRate.toStringAsFixed(0)}% Success',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: _successColor(_apiMcResult!.successRate),
+                    ),
                   ),
-                )
-              else
+                ),
+                const SizedBox(width: 6),
+                GestureDetector(
+                  onTap: _showLuckSliderSheet,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: FinSpanTheme.primaryGreen.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(LucideIcons.settings2,
+                            size: 12, color: FinSpanTheme.primaryGreen),
+                        SizedBox(width: 3),
+                        Text(
+                          'Luck',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: FinSpanTheme.primaryGreen,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ] else
                 TextButton(
                   onPressed: () => setState(() => _selectedIndex = 2),
-                  child: const Text('Simulator →', style: TextStyle(fontSize: 12)),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 4),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text('Simulator →',
+                      style: TextStyle(fontSize: 12)),
                 ),
             ],
           ),
-          // Loading indicator while MC API call is in progress
+
+          // Loading bar while API call is running
           if (_mcIsLoading) ...[
             const SizedBox(height: 8),
             const LinearProgressIndicator(
@@ -1361,25 +1469,49 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
               minHeight: 2,
             ),
           ],
+
+          // ── P10/P50/P90 stat row (MC active only) ─────────────────────
+          if (mcActive && _mcP10Points.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                _statPill('P10', fmt(_mcP10Points.last.value), Colors.red),
+                const SizedBox(width: 6),
+                _statPill('Median', fmt(_mcMedianPoints.last.value),
+                    const Color(0xFF8B5CF6)),
+                const SizedBox(width: 6),
+                _statPill('P90', fmt(_mcP90Points.last.value),
+                    FinSpanTheme.primaryGreen),
+              ],
+            ),
+          ],
+
           const SizedBox(height: 12),
-          SizedBox(
-            height: 200,
+
+          // ── Chart ─────────────────────────────────────────────────────
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            height: mcActive ? 240 : 200,
             child: SfCartesianChart(
               plotAreaBorderWidth: 0,
               margin: EdgeInsets.zero,
               trackballBehavior: TrackballBehavior(
                 enable: true,
                 activationMode: ActivationMode.singleTap,
-                tooltipSettings: const InteractiveTooltip(enable: true),
+                tooltipSettings: const InteractiveTooltip(
+                  enable: true,
+                  format: 'point.x : point.y',
+                ),
               ),
               primaryXAxis: NumericAxis(
                 minimum: age.toDouble(),
                 maximum: lifeExp.toDouble(),
                 interval: 10,
                 majorGridLines: const MajorGridLines(width: 0),
-                axisLabelFormatter: (AxisLabelRenderDetails d) {
-                  return ChartAxisLabel('Age ${d.value.toInt()}', null);
-                },
+                labelStyle: const TextStyle(
+                    fontSize: 9, color: FinSpanTheme.bodyGray),
+                axisLabelFormatter: (AxisLabelRenderDetails d) =>
+                    ChartAxisLabel('Age ${d.value.toInt()}', null),
               ),
               primaryYAxis: NumericAxis(
                 minimum: 0,
@@ -1387,21 +1519,71 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                 interval: dynamicMaxY / 4,
                 axisLine: const AxisLine(width: 0),
                 majorTickLines: const MajorTickLines(size: 0),
+                majorGridLines: MajorGridLines(
+                  width: 0.5,
+                  color: Colors.grey.withValues(alpha: 0.15),
+                  dashArray: const <double>[4, 4],
+                ),
+                labelStyle: const TextStyle(
+                    fontSize: 9, color: FinSpanTheme.bodyGray),
                 axisLabelFormatter: (AxisLabelRenderDetails d) {
                   final v = d.value.toDouble();
                   if (v == 0) return ChartAxisLabel(r'$0', null);
                   if (v >= 1000000) {
                     return ChartAxisLabel(
-                      r'$' + '${(v / 1000000).toStringAsFixed(1)}M',
-                      null,
-                    );
+                        '\$${(v / 1000000).toStringAsFixed(1)}M', null);
                   }
-                  return ChartAxisLabel(r'$' + '${(v / 1000).toInt()}K', null);
+                  return ChartAxisLabel('\$${(v / 1000).toInt()}K', null);
                 },
               ),
               series: <CartesianSeries>[
                 if (mcActive) ...[
-                  // Your Plan (deterministic local) — hidden when deselected
+                  // 1. P10–P90 uncertainty band (drawn first = behind all lines)
+                  RangeAreaSeries<_McBandPoint, double>(
+                    dataSource: (_showP90 && _showP10) ? _mcBandPoints : [],
+                    xValueMapper: (d, _) => d.age,
+                    highValueMapper: (d, _) => d.high,
+                    lowValueMapper: (d, _) => d.low,
+                    color: FinSpanTheme.primaryGreen.withValues(alpha: 0.07),
+                    borderColor: Colors.transparent,
+                    borderWidth: 0,
+                    name: 'Uncertainty Band',
+                    animationDuration: 0,
+                  ),
+                  // 2. 90th Percentile — dashed green
+                  SplineSeries<_McChartPoint, double>(
+                    dataSource: _showP90 ? _mcP90Points : [],
+                    xValueMapper: (d, _) => d.age,
+                    yValueMapper: (d, _) => d.value,
+                    color: FinSpanTheme.primaryGreen.withValues(alpha: 0.7),
+                    name: '90th Percentile',
+                    animationDuration: 0,
+                    dashArray: const <double>[6, 4],
+                    width: 1.5,
+                  ),
+                  // 3. 10th Percentile — dashed red
+                  SplineSeries<_McChartPoint, double>(
+                    dataSource: _showP10 ? _mcP10Points : [],
+                    xValueMapper: (d, _) => d.age,
+                    yValueMapper: (d, _) => d.value,
+                    color: Colors.red.withValues(alpha: 0.7),
+                    name: '10th Percentile',
+                    animationDuration: 0,
+                    dashArray: const <double>[6, 4],
+                    width: 1.5,
+                  ),
+                  // 4. Median / 50th — solid purple, medium weight
+                  SplineSeries<_McChartPoint, double>(
+                    dataSource: _showMedian ? _mcMedianPoints : [],
+                    xValueMapper: (d, _) => d.age,
+                    yValueMapper: (d, _) => d.value,
+                    color: const Color(0xFF8B5CF6).withValues(alpha: 0.9),
+                    name: 'Median (50th)',
+                    animationDuration: 0,
+                    dashArray: const <double>[4, 3],
+                    width: 2,
+                  ),
+                  // 5. Your Plan — bold solid indigo (top layer)
                   SplineSeries<LocalWealthPoint, double>(
                     dataSource: _showYourPlan ? _homeWealthData : [],
                     xValueMapper: (d, _) => d.age.toDouble(),
@@ -1410,45 +1592,15 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                     name: 'Your Plan',
                     animationDuration: 0,
                     width: 3,
-                  ),
-                  // 90th Percentile from backend — hidden when deselected
-                  SplineSeries<_McChartPoint, double>(
-                    dataSource: _showP90 ? _mcP90Points : [],
-                    xValueMapper: (d, _) => d.age,
-                    yValueMapper: (d, _) => d.value,
-                    color: FinSpanTheme.primaryGreen.withValues(alpha: 0.85),
-                    name: '90th Percentile',
-                    animationDuration: 0,
-                    dashArray: const <double>[5, 5],
-                    width: 1.5,
-                  ),
-                  // 50th Percentile / Median from backend
-                  SplineSeries<_McChartPoint, double>(
-                    dataSource: _showMedian ? _mcMedianPoints : [],
-                    xValueMapper: (d, _) => d.age,
-                    yValueMapper: (d, _) => d.value,
-                    color: const Color(0xFF8B5CF6),
-                    name: '50th Percentile',
-                    animationDuration: 0,
-                    width: 2,
-                  ),
-                  // 10th Percentile from backend — hidden when deselected
-                  SplineSeries<_McChartPoint, double>(
-                    dataSource: _showP10 ? _mcP10Points : [],
-                    xValueMapper: (d, _) => d.age,
-                    yValueMapper: (d, _) => d.value,
-                    color: Colors.red.withValues(alpha: 0.85),
-                    name: '10th Percentile',
-                    animationDuration: 0,
-                    dashArray: const <double>[5, 5],
-                    width: 1.5,
+                    markerSettings: const MarkerSettings(isVisible: false),
                   ),
                 ] else ...[
+                  // Default (MC off): clean SplineArea for total wealth
                   SplineAreaSeries<LocalWealthPoint, double>(
                     dataSource: _homeWealthData,
                     xValueMapper: (d, _) => d.age.toDouble(),
                     yValueMapper: (d, _) => d.total,
-                    color: const Color(0xFF6366F1).withValues(alpha: 0.15),
+                    color: const Color(0xFF6366F1).withValues(alpha: 0.12),
                     borderColor: const Color(0xFF6366F1),
                     borderWidth: 2.5,
                     name: 'Your Plan',
@@ -1458,12 +1610,14 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
               ],
             ),
           ),
+
           const SizedBox(height: 10),
-          // Tappable filter chips — tap to show/hide each series
+
+          // ── Tappable filter chips (MC) / static legend (no MC) ────────
           Wrap(
             alignment: WrapAlignment.center,
             runSpacing: 6,
-            spacing: 10,
+            spacing: 8,
             children: mcActive
                 ? [
                     _mcFilterChip(
@@ -1473,19 +1627,19 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                       () => setState(() => _showYourPlan = !_showYourPlan),
                     ),
                     _mcFilterChip(
-                      '90th Percentile',
+                      '90th Pct',
                       FinSpanTheme.primaryGreen,
                       _showP90,
                       () => setState(() => _showP90 = !_showP90),
                     ),
                     _mcFilterChip(
-                      '50th Percentile',
+                      'Median',
                       const Color(0xFF8B5CF6),
                       _showMedian,
                       () => setState(() => _showMedian = !_showMedian),
                     ),
                     _mcFilterChip(
-                      '10th Percentile',
+                      '10th Pct',
                       Colors.red,
                       _showP10,
                       () => setState(() => _showP10 = !_showP10),
@@ -1856,6 +2010,14 @@ class _McChartPoint {
   final double age;
   final double value;
   const _McChartPoint(this.age, this.value);
+}
+
+/// Paired (age, low=P10, high=P90) used for the RangeAreaSeries uncertainty band.
+class _McBandPoint {
+  final double age;
+  final double low;
+  final double high;
+  const _McBandPoint(this.age, this.low, this.high);
 }
 
 class _BinData {
