@@ -228,7 +228,8 @@ class _LandingScreenState extends State<LandingScreen> {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (context) => const SignUpScreen(),
+                                    builder: (context) =>
+                                        const SignUpScreen(returnToLogin: false),
                                   ),
                                 );
                               },

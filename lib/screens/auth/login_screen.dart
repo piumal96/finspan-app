@@ -378,8 +378,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                           : () {
                                               Navigator.push(
                                                 context,
-                                                _fadeSlideRoute(
-                                                    const SignUpScreen()),
+                                                _fadeSlideRoute(const SignUpScreen(
+                                                  returnToLogin: true,
+                                                )),
                                               );
                                             },
                                       child: const Text(

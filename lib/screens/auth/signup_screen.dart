@@ -6,6 +6,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../../theme/finspan_theme.dart';
 import '../../services/auth_service.dart';
 import '../../utils/response_utils.dart';
+import 'login_screen.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 const String _kGoogleSvg = '''
@@ -19,7 +20,11 @@ const String _kGoogleSvg = '''
 ''';
 
 class SignUpScreen extends StatefulWidget {
-  const SignUpScreen({super.key});
+  /// Set to true when pushed from [LoginScreen] so that the "Sign In" footer
+  /// link pops back to Login instead of pushing a new LoginScreen instance.
+  final bool returnToLogin;
+
+  const SignUpScreen({super.key, this.returnToLogin = false});
 
   @override
   State<SignUpScreen> createState() => _SignUpScreenState();
@@ -417,8 +422,21 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                     GestureDetector(
                                       onTap: anyLoading
                                           ? null
-                                          : () =>
-                                              Navigator.maybePop(context),
+                                          : () {
+                                              if (widget.returnToLogin) {
+                                                // Came from LoginScreen — just pop back to it.
+                                                Navigator.maybePop(context);
+                                              } else {
+                                                // Came from LandingScreen — replace this
+                                                // screen with LoginScreen so the stack
+                                                // becomes [Landing → Login] not [Landing → Login → Login].
+                                                Navigator.pushReplacement(
+                                                  context,
+                                                  _fadeSlideRoute(
+                                                      const LoginScreen()),
+                                                );
+                                              }
+                                            },
                                       child: const Text(
                                         'Sign In',
                                         style: TextStyle(
@@ -448,6 +466,24 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }
 
   // ─── Widget helpers ───────────────────────────────────────────────────────
+
+  Route<T> _fadeSlideRoute<T>(Widget page) {
+    return PageRouteBuilder<T>(
+      pageBuilder: (_, animation, __) => page,
+      transitionsBuilder: (_, animation, __, child) {
+        final fade = CurvedAnimation(parent: animation, curve: Curves.easeOut);
+        final slide = Tween<Offset>(
+          begin: const Offset(0, 0.06),
+          end: Offset.zero,
+        ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut));
+        return FadeTransition(
+          opacity: fade,
+          child: SlideTransition(position: slide, child: child),
+        );
+      },
+      transitionDuration: const Duration(milliseconds: 280),
+    );
+  }
 
   Widget _label(String text) => Text(
         text,
