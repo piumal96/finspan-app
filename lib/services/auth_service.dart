@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 class AuthService {
   // Access instance lazily to avoid crash if Firebase initialization failed
@@ -14,10 +15,10 @@ class AuthService {
     }
   }
 
-  final GoogleSignIn _googleSignIn = GoogleSignIn(
-    serverClientId:
-        '806780929060-o8v56lii1e559inftmb802hokpvmqspt.apps.googleusercontent.com',
-  );
+  // Do NOT pass serverClientId here — on Android, Firebase reads the web
+  // client ID from google-services.json automatically.  Passing it explicitly
+  // causes getTokenWithDetails UNKNOWN errors on some Play Services versions.
+  final GoogleSignIn _googleSignIn = GoogleSignIn(scopes: ['email']);
 
   // Check if Firebase is successfully initialized
   bool get isAvailable {
@@ -40,11 +41,23 @@ class AuthService {
 
   Future<UserCredential?> signInWithGoogle() async {
     try {
+      // Sign out first to force the account picker to appear every time
+      await _googleSignIn.signOut();
+
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-      if (googleUser == null) return null; // Cancelled
+      if (googleUser == null) return null; // User cancelled the picker
 
       final GoogleSignInAuthentication googleAuth =
           await googleUser.authentication;
+
+      // idToken should always be present when google-services.json is correct
+      if (googleAuth.idToken == null) {
+        throw Exception(
+          'Google Sign-In did not return an ID token. '
+          'Check that the SHA-1 fingerprint is registered in Firebase console '
+          'and google-services.json is up to date.',
+        );
+      }
 
       final OAuthCredential credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
@@ -55,6 +68,11 @@ class AuthService {
     } on FirebaseAuthException catch (e) {
       if (kDebugMode) {
         print('🔒 AuthService: Firebase Auth Error (${e.code}): ${e.message}');
+      }
+      rethrow;
+    } on PlatformException catch (e) {
+      if (kDebugMode) {
+        print('🚨 AuthService: Google Sign-In platform error: ${e.code} — ${e.message}');
       }
       rethrow;
     } catch (e) {

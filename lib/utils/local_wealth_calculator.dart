@@ -62,16 +62,21 @@ class LocalWealthCalculator {
       _costMultipliers[level] ?? _costMultipliers['same']!;
 
   /// Port of useLifePlanning.calculateWealth() — runs in microseconds.
+  /// Pass [initialTaxable], [initialTaxDeferred], [initialRoth] to seed real
+  /// account balances from the user's OnboardingData instead of zeroes.
   static List<LocalWealthPoint> calculate(
     List<LifeEvent> events,
     int currentAge,
     int lifeExpectancy, {
-    List<double>? customReturns, // Optional array of realistic yearly returns
+    List<double>? customReturns,
+    double initialTaxable = 0.0,
+    double initialTaxDeferred = 0.0,
+    double initialRoth = 0.0,
   }) {
     final List<LocalWealthPoint> data = [];
-    double taxable = 10000;
-    double taxDeferred = 0;
-    double roth = 0;
+    double taxable = initialTaxable;
+    double taxDeferred = initialTaxDeferred;
+    double roth = initialRoth;
 
     for (int age = currentAge; age <= lifeExpectancy; age++) {
       double income = 0;
@@ -89,37 +94,45 @@ class LocalWealthCalculator {
         switch (event.type) {
           case LifeEventType.education:
             if (active) {
-              expenses +=
-                  (40000 *
-                      _cost(
-                        event.params['costLevel'] as String? ?? 'moderate',
-                      )) /
-                  4;
+              // Prefer editor-set numeric tuition over qualitative fallback
+              final tuition = (event.params['tuition'] as num?)?.toDouble();
+              final dur = (event.params['durationYears'] as num?)?.toDouble() ?? 4.0;
+              if (tuition != null) {
+                expenses += tuition / dur;
+              } else {
+                expenses +=
+                    (40000 *
+                        _cost(event.params['costLevel'] as String? ?? 'moderate')) /
+                    4;
+              }
             }
 
           case LifeEventType.job:
             if (started && !isRetired) {
-              final base = _income(
-                event.params['incomeLevel'] as String? ?? 'moderate',
-              );
+              // Prefer editor-set numeric salary over qualitative incomeLevel
+              final salary = (event.params['salary'] as num?)?.toDouble();
+              final base = salary ??
+                  _income(event.params['incomeLevel'] as String? ?? 'moderate');
+              final raisePct =
+                  (event.params['annualRaise'] as num?)?.toDouble() ?? 2.5;
               final years = age - event.startAge;
-              income += base * pow(1.025, years);
+              income += base * pow(1.0 + raisePct / 100, years);
               isWorking = true;
             }
 
           case LifeEventType.jobChange:
             if (started && !isRetired) {
-              final dir = event.params['direction'] as String? ?? 'same';
-              final mult = dir == 'up'
-                  ? 1.2
-                  : dir == 'down'
-                  ? 0.8
-                  : 1.0;
-              income =
-                  _income(
-                    event.params['incomeLevel'] as String? ?? 'moderate',
-                  ) *
-                  mult;
+              // Prefer editor-set newSalary over qualitative direction/level
+              final newSalary = (event.params['newSalary'] as num?)?.toDouble();
+              if (newSalary != null) {
+                income = newSalary;
+              } else {
+                final dir = event.params['direction'] as String? ?? 'same';
+                final mult = dir == 'up' ? 1.2 : dir == 'down' ? 0.8 : 1.0;
+                income =
+                    _income(event.params['incomeLevel'] as String? ?? 'moderate') *
+                    mult;
+              }
               isWorking = true;
             }
 
@@ -134,99 +147,169 @@ class LocalWealthCalculator {
 
           case LifeEventType.sideHustle:
             if (active && !isRetired) {
-              income +=
-                  _income(event.params['incomeLevel'] as String? ?? 'low') *
-                  0.3;
+              // Prefer editor-set monthlyIncome over qualitative level
+              final monthly = (event.params['monthlyIncome'] as num?)?.toDouble();
+              if (monthly != null) {
+                income += monthly * 12;
+              } else {
+                income +=
+                    _income(event.params['incomeLevel'] as String? ?? 'low') * 0.3;
+              }
             }
 
           case LifeEventType.rent:
             if (active) {
-              expenses +=
-                  18000 *
-                  _cost(event.params['costLevel'] as String? ?? 'moderate');
+              // Prefer editor-set monthlyRent over qualitative costLevel
+              final monthly = (event.params['monthlyRent'] as num?)?.toDouble();
+              if (monthly != null) {
+                expenses += monthly * 12;
+              } else {
+                expenses +=
+                    18000 * _cost(event.params['costLevel'] as String? ?? 'moderate');
+              }
             }
 
           case LifeEventType.marriage:
             if (started) {
               hasPartner = true;
-              final partnerLevel =
-                  event.params['partnerIncomeLevel'] as String? ?? 'moderate';
-              if (partnerLevel != 'none') {
-                income += _income(partnerLevel) * (isRetired ? 0 : 0.8);
+              // Prefer editor-set partnerIncome over qualitative level
+              final partnerIncome =
+                  (event.params['partnerIncome'] as num?)?.toDouble();
+              if (partnerIncome != null) {
+                income += partnerIncome * (isRetired ? 0 : 0.8);
+              } else {
+                final partnerLevel =
+                    event.params['partnerIncomeLevel'] as String? ?? 'moderate';
+                if (partnerLevel != 'none') {
+                  income += _income(partnerLevel) * (isRetired ? 0 : 0.8);
+                }
               }
-              expenses *= 0.85;
+              expenses *= 0.85; // shared household discount
+            }
+            // One-time wedding cost on the start year (added after multiplier)
+            if (age == event.startAge) {
+              final weddingCost =
+                  (event.params['weddingCost'] as num?)?.toDouble() ?? 0;
+              expenses += weddingCost;
             }
 
           case LifeEventType.home:
             if (age == event.startAge) {
-              final mult = _cost(
-                event.params['costLevel'] as String? ?? 'expensive',
-              );
-              final price = 400000 * mult;
-              final dp = (event.params['hasGoodSavings'] as bool? ?? false)
-                  ? price * 0.2
-                  : price * 0.1;
-              taxable -= dp;
+              final homePrice = (event.params['homePrice'] as num?)?.toDouble();
+              if (homePrice != null) {
+                final downPct =
+                    (event.params['downPaymentPercent'] as num?)?.toDouble() ?? 20;
+                taxable -= homePrice * (downPct / 100);
+              } else {
+                final mult =
+                    _cost(event.params['costLevel'] as String? ?? 'expensive');
+                final price = 400000 * mult;
+                final dp = (event.params['hasGoodSavings'] as bool? ?? false)
+                    ? price * 0.2
+                    : price * 0.1;
+                taxable -= dp;
+              }
             }
             if (started) {
-              expenses +=
-                  400000 *
-                  _cost(event.params['costLevel'] as String? ?? 'expensive') *
-                  0.06;
+              final homePrice = (event.params['homePrice'] as num?)?.toDouble();
+              if (homePrice != null) {
+                expenses += homePrice * 0.06; // ~6% annual carrying cost
+              } else {
+                expenses +=
+                    400000 *
+                    _cost(event.params['costLevel'] as String? ?? 'expensive') *
+                    0.06;
+              }
             }
 
           case LifeEventType.children:
             if (active) {
-              final count = (event.params['count'] as num?)?.toInt() ?? 1;
-              expenses +=
-                  15000.0 *
-                  count *
-                  _cost(event.params['costLevel'] as String? ?? 'moderate');
+              // Prefer editor-set numKids + annualCostPerKid over qualitative
+              final numKids = (event.params['numKids'] as num?)?.toInt();
+              final annualCost =
+                  (event.params['annualCostPerKid'] as num?)?.toDouble();
+              if (numKids != null && annualCost != null) {
+                expenses += annualCost * numKids;
+              } else {
+                final count = (event.params['count'] as num?)?.toInt() ?? 1;
+                expenses +=
+                    15000.0 *
+                    count *
+                    _cost(event.params['costLevel'] as String? ?? 'moderate');
+              }
             }
 
           case LifeEventType.careerBreak:
             if (active) {
               income = 0;
               isWorking = false;
+              if (!(event.params['hasSavings'] as bool? ?? true)) {
+                expenses += 3000;
+              }
             }
 
           case LifeEventType.retirement:
             if (started) {
               isRetired = true;
               isWorking = false;
-              final lifestyle =
-                  event.params['lifestyleLevel'] as String? ?? 'moderate';
-              final costs = lifestyle == 'frugal'
-                  ? 36000.0
-                  : lifestyle == 'generous'
-                  ? 96000.0
-                  : 60000.0;
-              expenses = costs + (hasPartner ? costs * 0.6 : 0);
+              // Prefer editor-set monthlySpending over qualitative lifestyleLevel
+              final monthly =
+                  (event.params['monthlySpending'] as num?)?.toDouble();
+              if (monthly != null) {
+                expenses = monthly * 12 + (hasPartner ? monthly * 12 * 0.6 : 0);
+              } else {
+                final lifestyle =
+                    event.params['lifestyleLevel'] as String? ?? 'moderate';
+                final costs = lifestyle == 'frugal'
+                    ? 36000.0
+                    : lifestyle == 'generous'
+                    ? 96000.0
+                    : 60000.0;
+                expenses = costs + (hasPartner ? costs * 0.6 : 0);
+              }
             }
 
           case LifeEventType.health:
             if (age == event.startAge) {
-              final severity =
-                  event.params['severity'] as String? ?? 'moderate';
-              final base = severity == 'minor'
-                  ? 5000.0
-                  : severity == 'major'
-                  ? 80000.0
-                  : 25000.0;
-              final cov = event.params['hasInsurance'] as bool? ?? false;
-              expenses += base * (cov ? 0.3 : 1.0);
+              // Prefer editor-set medicalCost over qualitative severity
+              final medicalCost =
+                  (event.params['medicalCost'] as num?)?.toDouble();
+              if (medicalCost != null) {
+                expenses += medicalCost;
+              } else {
+                final severity =
+                    event.params['severity'] as String? ?? 'moderate';
+                final base = severity == 'minor'
+                    ? 5000.0
+                    : severity == 'major'
+                    ? 80000.0
+                    : 25000.0;
+                final cov = event.params['hasInsurance'] as bool? ?? false;
+                expenses += base * (cov ? 0.3 : 1.0);
+              }
             }
 
           case LifeEventType.business:
             if (age == event.startAge) {
-              taxable -= 50000;
+              final startupCost =
+                  (event.params['startupCost'] as num?)?.toDouble() ?? 50000;
+              taxable -= startupCost;
             }
             if (started && age >= event.startAge + 3 && !isRetired) {
-              income += 75000;
+              final revenue =
+                  (event.params['expectedRevenue'] as num?)?.toDouble() ?? 75000;
+              income += revenue;
               isWorking = true;
             }
 
           case LifeEventType.move:
+            // One-time moving cost set by the editor
+            if (age == event.startAge) {
+              final movingCost =
+                  (event.params['movingCost'] as num?)?.toDouble() ?? 0;
+              expenses += movingCost;
+            }
+            // Ongoing cost-of-living change (qualitative, kept for backward compat)
             if (started) {
               final change = event.params['costChange'] as String? ?? 'same';
               expenses *= _cost(change);
@@ -234,7 +317,51 @@ class LocalWealthCalculator {
 
           case LifeEventType.familySupport:
             if (active) {
-              expenses += 15000;
+              // Prefer editor-set monthlyAmount over qualitative amount level
+              final monthly =
+                  (event.params['monthlyAmount'] as num?)?.toDouble();
+              if (monthly != null) {
+                expenses += monthly * 12;
+              } else {
+                final amount = event.params['amount'] as String? ?? 'moderate';
+                final cost = amount == 'small'
+                    ? 6000.0
+                    : amount == 'significant'
+                    ? 30000.0
+                    : 15000.0;
+                expenses += cost;
+              }
+            }
+
+          case LifeEventType.car:
+            if (age == event.startAge) {
+              final price =
+                  (event.params['carPrice'] as num?)?.toDouble() ?? 30000;
+              taxable -= price;
+            }
+            if (active) {
+              expenses += 1200; // ~$100/month maintenance
+            }
+
+          case LifeEventType.vacation:
+            if (age == event.startAge) {
+              final cost =
+                  (event.params['tripCost'] as num?)?.toDouble() ?? 5000;
+              expenses += cost;
+            }
+
+          case LifeEventType.oneTimeExpense:
+            if (age == event.startAge) {
+              final amount =
+                  (event.params['amount'] as num?)?.toDouble() ?? 15000;
+              expenses += amount;
+            }
+
+          case LifeEventType.insurance:
+            if (active) {
+              final monthly =
+                  (event.params['monthlyPremium'] as num?)?.toDouble() ?? 100;
+              expenses += monthly * 12;
             }
         }
       }
@@ -353,8 +480,11 @@ class LocalWealthCalculator {
   static LocalMonteCarloResult calculateMonteCarlo(
     List<LifeEvent> events,
     int currentAge,
-    int lifeExpectancy,
-  ) {
+    int lifeExpectancy, {
+    double initialTaxable = 0.0,
+    double initialTaxDeferred = 0.0,
+    double initialRoth = 0.0,
+  }) {
     final int yearsToSimulate = lifeExpectancy - currentAge + 1;
     final int numSimulations = 100;
     const double meanReturn = 0.07; // 7% average
@@ -389,6 +519,9 @@ class LocalWealthCalculator {
         currentAge,
         lifeExpectancy,
         customReturns: marketReturns,
+        initialTaxable: initialTaxable,
+        initialTaxDeferred: initialTaxDeferred,
+        initialRoth: initialRoth,
       );
 
       allRuns.add(runData);

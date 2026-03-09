@@ -3,7 +3,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../../theme/finspan_theme.dart';
 import '../../services/auth_service.dart';
 import '../../widgets/finspan_card.dart';
-import '../onboarding/onboarding_wrapper.dart';
 import '../../utils/response_utils.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
@@ -123,16 +122,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           'Account created! Check your email to verify your address.',
           isSuccess: true,
         );
-
-        // Short delay so user can read the success message
-        await Future.delayed(const Duration(milliseconds: 600));
-
-        if (context.mounted) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const OnboardingWrapper()),
-          );
-        }
+        // AuthGate's StreamBuilder detects the new user and navigates automatically.
       }
     } on FirebaseAuthException catch (e) {
       if (context.mounted) {

@@ -1,10 +1,10 @@
-import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../../services/auth_service.dart';
 import '../../theme/finspan_theme.dart';
 import '../../widgets/finspan_card.dart';
 import '../onboarding/onboarding_data.dart';
-import '../landing_screen.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 /// Callback invoked when the user saves updated data and wants to re-simulate.
@@ -666,15 +666,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                         );
                         if (confirmed == true) {
-                          await FirebaseAuth.instance.signOut();
-                          if (context.mounted) {
-                            Navigator.of(context).pushAndRemoveUntil(
-                              MaterialPageRoute(
-                                builder: (_) => const LandingScreen(),
-                              ),
-                              (route) => false,
-                            );
-                          }
+                          // Signs out from both Firebase and Google Sign-In.
+                          // AuthGate's StreamBuilder automatically navigates
+                          // back to LandingScreen — no manual push needed.
+                          await AuthService().signOut();
                         }
                       },
                     ),
@@ -865,26 +860,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (confirmed == true && context.mounted) {
       try {
-        final user = FirebaseAuth.instance.currentUser;
-        await user?.delete();
-        if (context.mounted) {
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (_) => const LandingScreen()),
-            (route) => false,
-          );
-        }
+        // Delete the Firebase account, then sign out from Google too.
+        // AuthGate's StreamBuilder detects the null user and navigates
+        // back to LandingScreen automatically — no manual push needed.
+        await FirebaseAuth.instance.currentUser?.delete();
+        await AuthService().signOut();
       } on FirebaseAuthException catch (e) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                e.code == 'requires-recent-login'
-                    ? 'Please sign out and sign back in before deleting your account.'
-                    : 'Failed to delete account. Please try again.',
+          try {
+            ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+              SnackBar(
+                content: Text(
+                  e.code == 'requires-recent-login'
+                      ? 'Please sign out and sign back in before deleting your account.'
+                      : 'Failed to delete account. Please try again.',
+                ),
+                backgroundColor: Colors.red,
               ),
-              backgroundColor: Colors.red,
-            ),
-          );
+            );
+          } catch (_) {}
         }
       }
     }

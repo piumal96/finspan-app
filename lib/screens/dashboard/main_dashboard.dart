@@ -63,6 +63,9 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
       _buildHomeEvents(),
       age,
       lifeExp,
+      initialTaxable: widget.data?.taxableSavings ?? 0,
+      initialTaxDeferred: widget.data?.taxDeferredSavings ?? 0,
+      initialRoth: widget.data?.taxFreeSavings ?? 0,
     );
   }
 
@@ -98,12 +101,14 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Derive current wealth from local wealth calculator (first data point = today)
-    final double currentWealth = _homeWealthData.isNotEmpty
-        ? _homeWealthData.first.total
-        : (widget.result?.standardResults.first.total ?? 0);
+    // Current Savings: always use the user's actual account balances (not local calc seed)
+    final double currentWealth = _currentData.totalSavings > 0
+        ? _currentData.totalSavings
+        : (widget.result?.standardResults.isNotEmpty == true
+            ? widget.result!.standardResults.first.netWorth
+            : 0);
 
-    // 10-year projection: use calculator data at index 10 if available
+    // 10-year projection: prefer API result, fall back to local calc
     double projected10Years;
     if (widget.result != null && widget.result!.standardResults.length > 10) {
       projected10Years = widget.result!.standardResults[10].total;

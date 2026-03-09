@@ -42,7 +42,9 @@ class _FinSpanLifeBarState extends State<FinSpanLifeBar> {
   @override
   Widget build(BuildContext context) {
     const int minAge = 18;
-    const int maxAge = 95;
+    // Use the user's configured life expectancy as the track maximum so
+    // event pins can be dragged all the way to the end of their lifetime.
+    final int maxAge = widget.lifeExpectancy.clamp(minAge + 10, 120);
 
     // Multi-row logic: group events to prevent overlap
     final List<List<LifeEvent>> eventRows = [];
@@ -483,20 +485,42 @@ class _FinSpanLifeBarState extends State<FinSpanLifeBar> {
     switch (type) {
       case LifeEventType.job:
         return Colors.blue;
+      case LifeEventType.jobChange:
+        return Colors.teal;
+      case LifeEventType.jobLoss:
+        return Colors.orange;
+      case LifeEventType.sideHustle:
+        return Colors.amber;
+      case LifeEventType.careerBreak:
+        return Colors.cyan;
+      case LifeEventType.business:
+        return Colors.purple;
       case LifeEventType.home:
         return Colors.orange;
+      case LifeEventType.rent:
+        return Colors.brown;
       case LifeEventType.marriage:
         return Colors.pink;
       case LifeEventType.children:
         return Colors.purple;
+      case LifeEventType.familySupport:
+        return Colors.indigo;
+      case LifeEventType.car:
+        return Colors.blueGrey;
+      case LifeEventType.insurance:
+        return Colors.teal;
       case LifeEventType.retirement:
         return Colors.green;
       case LifeEventType.education:
         return Colors.indigo;
-      case LifeEventType.business:
+      case LifeEventType.health:
+        return Colors.red;
+      case LifeEventType.move:
         return Colors.teal;
-      default:
-        return Colors.grey;
+      case LifeEventType.vacation:
+        return Colors.cyan;
+      case LifeEventType.oneTimeExpense:
+        return Colors.deepOrange;
     }
   }
 
@@ -504,20 +528,42 @@ class _FinSpanLifeBarState extends State<FinSpanLifeBar> {
     switch (type) {
       case LifeEventType.job:
         return LucideIcons.briefcase;
+      case LifeEventType.jobChange:
+        return LucideIcons.arrowLeftRight;
+      case LifeEventType.jobLoss:
+        return LucideIcons.alertTriangle;
+      case LifeEventType.sideHustle:
+        return LucideIcons.star;
+      case LifeEventType.careerBreak:
+        return LucideIcons.plane;
+      case LifeEventType.business:
+        return LucideIcons.rocket;
       case LifeEventType.home:
         return LucideIcons.home;
+      case LifeEventType.rent:
+        return LucideIcons.building;
       case LifeEventType.marriage:
         return LucideIcons.heart;
       case LifeEventType.children:
         return LucideIcons.baby;
+      case LifeEventType.familySupport:
+        return LucideIcons.heartHandshake;
+      case LifeEventType.car:
+        return LucideIcons.car;
+      case LifeEventType.insurance:
+        return LucideIcons.shieldCheck;
       case LifeEventType.retirement:
         return LucideIcons.palmtree;
       case LifeEventType.education:
         return LucideIcons.graduationCap;
-      case LifeEventType.business:
-        return LucideIcons.rocket;
-      default:
-        return LucideIcons.calendarDays;
+      case LifeEventType.health:
+        return LucideIcons.heartPulse;
+      case LifeEventType.move:
+        return LucideIcons.mapPin;
+      case LifeEventType.vacation:
+        return LucideIcons.plane;
+      case LifeEventType.oneTimeExpense:
+        return LucideIcons.receipt;
     }
   }
 }

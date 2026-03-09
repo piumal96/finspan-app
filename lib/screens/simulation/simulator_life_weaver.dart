@@ -33,6 +33,8 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
   // Monte Carlo State
   bool _enableMonteCarlo = false;
   LocalMonteCarloResult? _mcResult;
+  // Deterministic (base) plan — used as "Your Plan" overlay when MC is active
+  List<LocalWealthPoint> _deterministicData = [];
 
   // History for undo
   final List<List<LifeEvent>> _history = [];
@@ -77,21 +79,32 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
   }
 
   void _recalculate() {
+    final double initTaxable = widget.data?.taxableSavings ?? 0;
+    final double initTaxDeferred = widget.data?.taxDeferredSavings ?? 0;
+    final double initRoth = widget.data?.taxFreeSavings ?? 0;
+
+    // Always compute the deterministic path — it's the "Your Plan" baseline
+    _deterministicData = LocalWealthCalculator.calculate(
+      _events,
+      _currentAge,
+      _lifeExpectancy,
+      initialTaxable: initTaxable,
+      initialTaxDeferred: initTaxDeferred,
+      initialRoth: initRoth,
+    );
+    _wealthData = _deterministicData;
+
     if (_enableMonteCarlo) {
       _mcResult = LocalWealthCalculator.calculateMonteCarlo(
         _events,
         _currentAge,
         _lifeExpectancy,
+        initialTaxable: initTaxable,
+        initialTaxDeferred: initTaxDeferred,
+        initialRoth: initRoth,
       );
-      // For insight cards, base them on the median run to prevent them from jumping around wildly
-      _wealthData = _mcResult!.median;
     } else {
       _mcResult = null;
-      _wealthData = LocalWealthCalculator.calculate(
-        _events,
-        _currentAge,
-        _lifeExpectancy,
-      );
     }
 
     _insights = LocalWealthCalculator.insights(
@@ -243,6 +256,18 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
           LucideIcons.heartHandshake,
           Colors.indigo,
         ),
+        _EventOption(
+          LifeEventType.car,
+          'Buy a Car',
+          LucideIcons.car,
+          Colors.blueGrey,
+        ),
+        _EventOption(
+          LifeEventType.insurance,
+          'Life Insurance',
+          LucideIcons.shieldCheck,
+          Colors.teal,
+        ),
       ],
       '🌟 Life Changes': [
         _EventOption(
@@ -268,6 +293,18 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
           'Move Cities',
           LucideIcons.mapPin,
           Colors.teal,
+        ),
+        _EventOption(
+          LifeEventType.vacation,
+          'Vacation',
+          LucideIcons.plane,
+          Colors.cyan,
+        ),
+        _EventOption(
+          LifeEventType.oneTimeExpense,
+          'One-Time Expense',
+          LucideIcons.receipt,
+          Colors.deepOrange,
         ),
       ],
     };
@@ -417,6 +454,10 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
         return startAge + 1;
       case LifeEventType.familySupport:
         return startAge + 5;
+      case LifeEventType.car:
+        return startAge + 7;
+      case LifeEventType.insurance:
+        return startAge + 20;
       default:
         return null;
     }
@@ -436,86 +477,461 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
         return {'count': 1, 'costLevel': 'moderate'};
       case LifeEventType.health:
         return {'severity': 'moderate', 'hasInsurance': true};
+      case LifeEventType.car:
+        return {'carPrice': 30000};
+      case LifeEventType.vacation:
+        return {'tripCost': 5000};
+      case LifeEventType.oneTimeExpense:
+        return {'amount': 15000};
+      case LifeEventType.insurance:
+        return {'monthlyPremium': 100, 'coverageAmount': 500000};
       default:
         return {};
     }
   }
 
+  // ─── Format helpers ────────────────────────────────────────────────────────
+
+  String _fmtPercent(double v) => '${v.toStringAsFixed(1)}%';
+  String _fmtYears(double v) => '${v.toInt()} yr${v.toInt() != 1 ? 's' : ''}';
+  String _fmtInt(double v) => v.toInt().toString();
+
+  // ─── Full event editor ──────────────────────────────────────────────────────
+
   void _showEventEditor(LifeEvent event) {
+    final int index = _events.indexWhere((e) => e.id == event.id);
+    if (index == -1) return;
+
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        decoration: const BoxDecoration(
-          color: FinSpanTheme.backgroundLight,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  _getEventIcon(event.type),
-                  color: _getEventColor(event.type),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    event.name,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx2, setModalState) {
+          final ev = _events[index]; // always reads live state
+          final color = _getEventColor(ev.type);
+
+          // ── Param helpers ──────────────────────────────────────────────────
+          double p(String key, double fallback) {
+            final val = ev.params[key];
+            if (val is num) return val.toDouble();
+            return fallback;
+          }
+
+          void updateParam(String key, dynamic value) {
+            final newParams = Map<String, dynamic>.from(ev.params)..[key] = value;
+            setState(() {
+              _events[index] = LifeEvent(
+                id: ev.id, type: ev.type, name: ev.name,
+                startAge: ev.startAge, endAge: ev.endAge,
+                params: newParams,
+              );
+              _recalculate();
+            });
+            setModalState(() {});
+          }
+
+          void updateStartAge(int newAge) {
+            final dur = ev.endAge != null ? ev.endAge! - ev.startAge : 0;
+            setState(() {
+              _events[index] = LifeEvent(
+                id: ev.id, type: ev.type, name: ev.name,
+                startAge: newAge,
+                endAge: ev.endAge != null ? newAge + dur : null,
+                params: ev.params,
+              );
+              _recalculate();
+            });
+            setModalState(() {});
+          }
+
+          void updateDuration(int newDur) {
+            setState(() {
+              _events[index] = LifeEvent(
+                id: ev.id, type: ev.type, name: ev.name,
+                startAge: ev.startAge,
+                endAge: ev.startAge + newDur,
+                params: ev.params,
+              );
+              _recalculate();
+            });
+            setModalState(() {});
+          }
+
+          // ── Slider widget helper ───────────────────────────────────────────
+          Widget pSlider(
+            String label,
+            String formatted,
+            double value,
+            double min,
+            double max,
+            int divisions,
+            void Function(double) onChange,
+          ) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        label,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: FinSpanTheme.charcoal,
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          formatted,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: color,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  Slider(
+                    value: value.clamp(min, max),
+                    min: min,
+                    max: max,
+                    divisions: divisions,
+                    activeColor: color,
+                    inactiveColor: color.withValues(alpha: 0.18),
+                    onChanged: onChange,
+                  ),
+                ],
+              ),
+            );
+          }
+
+          // ── Event-specific controls per type ───────────────────────────────
+          List<Widget> buildControls() {
+            switch (ev.type) {
+              case LifeEventType.job:
+                return [
+                  pSlider('Annual Salary', _formatMoney(p('salary', 55000)),
+                    p('salary', 55000), 20000, 300000, 56,
+                    (v) => updateParam('salary', v)),
+                  pSlider('Annual Raise', _fmtPercent(p('annualRaise', 2.5)),
+                    p('annualRaise', 2.5), 0, 10, 20,
+                    (v) => updateParam('annualRaise', v)),
+                ];
+              case LifeEventType.jobChange:
+                return [
+                  pSlider('New Salary', _formatMoney(p('newSalary', 75000)),
+                    p('newSalary', 75000), 20000, 400000, 76,
+                    (v) => updateParam('newSalary', v)),
+                ];
+              case LifeEventType.sideHustle:
+                return [
+                  pSlider('Monthly Income', _formatMoney(p('monthlyIncome', 1000)),
+                    p('monthlyIncome', 1000), 100, 10000, 99,
+                    (v) => updateParam('monthlyIncome', v)),
+                ];
+              case LifeEventType.education:
+                return [
+                  pSlider('Total Tuition', _formatMoney(p('tuition', 40000)),
+                    p('tuition', 40000), 5000, 300000, 59,
+                    (v) => updateParam('tuition', v)),
+                  pSlider('Duration', _fmtYears(p('durationYears', 4)),
+                    p('durationYears', 4), 1, 8, 7,
+                    (v) => updateParam('durationYears', v.roundToDouble())),
+                ];
+              case LifeEventType.rent:
+                return [
+                  pSlider('Monthly Rent', _formatMoney(p('monthlyRent', 2000)),
+                    p('monthlyRent', 2000), 500, 8000, 75,
+                    (v) => updateParam('monthlyRent', v)),
+                ];
+              case LifeEventType.home:
+                return [
+                  pSlider('Home Price', _formatMoney(p('homePrice', 400000)),
+                    p('homePrice', 400000), 100000, 2000000, 76,
+                    (v) => updateParam('homePrice', v)),
+                  pSlider('Down Payment', _fmtPercent(p('downPaymentPercent', 20)),
+                    p('downPaymentPercent', 20), 0, 50, 10,
+                    (v) => updateParam('downPaymentPercent', v.roundToDouble())),
+                ];
+              case LifeEventType.marriage:
+                return [
+                  pSlider('Wedding Cost', _formatMoney(p('weddingCost', 25000)),
+                    p('weddingCost', 25000), 0, 150000, 30,
+                    (v) => updateParam('weddingCost', v)),
+                  pSlider('Partner Income', _formatMoney(p('partnerIncome', 55000)),
+                    p('partnerIncome', 55000), 0, 300000, 60,
+                    (v) => updateParam('partnerIncome', v)),
+                ];
+              case LifeEventType.children:
+                return [
+                  pSlider('Number of Kids', _fmtInt(p('numKids', 1)),
+                    p('numKids', 1), 1, 5, 4,
+                    (v) => updateParam('numKids', v.round())),
+                  pSlider('Annual Cost / Child', _formatMoney(p('annualCostPerKid', 15000)),
+                    p('annualCostPerKid', 15000), 5000, 40000, 35,
+                    (v) => updateParam('annualCostPerKid', v)),
+                ];
+              case LifeEventType.business:
+                return [
+                  pSlider('Startup Cost', _formatMoney(p('startupCost', 50000)),
+                    p('startupCost', 50000), 5000, 500000, 99,
+                    (v) => updateParam('startupCost', v)),
+                  pSlider('Expected Revenue', _formatMoney(p('expectedRevenue', 80000)),
+                    p('expectedRevenue', 80000), 20000, 500000, 48,
+                    (v) => updateParam('expectedRevenue', v)),
+                ];
+              case LifeEventType.retirement:
+                return [
+                  pSlider('Monthly Spending', _formatMoney(p('monthlySpending', 4000)),
+                    p('monthlySpending', 4000), 1500, 15000, 27,
+                    (v) => updateParam('monthlySpending', v)),
+                ];
+              case LifeEventType.health:
+                return [
+                  pSlider('Medical Cost', _formatMoney(p('medicalCost', 25000)),
+                    p('medicalCost', 25000), 1000, 300000, 299,
+                    (v) => updateParam('medicalCost', v)),
+                ];
+              case LifeEventType.move:
+                return [
+                  pSlider('Moving Cost', _formatMoney(p('movingCost', 5000)),
+                    p('movingCost', 5000), 1000, 50000, 49,
+                    (v) => updateParam('movingCost', v)),
+                ];
+              case LifeEventType.familySupport:
+                return [
+                  pSlider('Monthly Amount', _formatMoney(p('monthlyAmount', 500)),
+                    p('monthlyAmount', 500), 100, 5000, 49,
+                    (v) => updateParam('monthlyAmount', v)),
+                  pSlider('Support Duration', _fmtYears(p('supportYears', 5)),
+                    p('supportYears', 5), 1, 25, 24,
+                    (v) => updateParam('supportYears', v.roundToDouble())),
+                ];
+              case LifeEventType.car:
+                return [
+                  pSlider('Car Price', _formatMoney(p('carPrice', 30000)),
+                    p('carPrice', 30000), 5000, 150000, 29,
+                    (v) => updateParam('carPrice', v)),
+                ];
+              case LifeEventType.vacation:
+                return [
+                  pSlider('Trip Cost', _formatMoney(p('tripCost', 5000)),
+                    p('tripCost', 5000), 500, 50000, 99,
+                    (v) => updateParam('tripCost', v)),
+                ];
+              case LifeEventType.oneTimeExpense:
+                return [
+                  pSlider('Amount', _formatMoney(p('amount', 15000)),
+                    p('amount', 15000), 1000, 200000, 199,
+                    (v) => updateParam('amount', v)),
+                ];
+              case LifeEventType.insurance:
+                return [
+                  pSlider('Monthly Premium', _formatMoney(p('monthlyPremium', 100)),
+                    p('monthlyPremium', 100), 10, 2000, 199,
+                    (v) => updateParam('monthlyPremium', v)),
+                  pSlider('Coverage Amount', _formatMoney(p('coverageAmount', 500000)),
+                    p('coverageAmount', 500000), 10000, 5000000, 499,
+                    (v) => updateParam('coverageAmount', v)),
+                  pSlider('Term Length', _fmtYears(p('termLength', 20)),
+                    p('termLength', 20), 1, 40, 39,
+                    (v) => updateParam('termLength', v.roundToDouble())),
+                ];
+              default:
+                return []; // job-loss, career-break — timing only
+            }
+          }
+
+          final controls = buildControls();
+          final startAgeMax = (_lifeExpectancy - 1).toDouble();
+          final startAgeMin = _currentAge.toDouble();
+          final startAgeDivisions =
+              (startAgeMax - startAgeMin).clamp(1, 80).toInt();
+          final curDuration = ev.endAge != null
+              ? (ev.endAge! - ev.startAge).clamp(1, 50)
+              : 1;
+
+          // ── Modal layout ───────────────────────────────────────────────────
+          return DraggableScrollableSheet(
+            initialChildSize: 0.72,
+            maxChildSize: 0.92,
+            minChildSize: 0.4,
+            builder: (_, scrollCtrl) => Container(
+              decoration: const BoxDecoration(
+                color: FinSpanTheme.backgroundLight,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: ListView(
+                controller: scrollCtrl,
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+                children: [
+                  // Handle bar
+                  Center(
+                    child: Container(
+                      width: 40, height: 4,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Age ${event.startAge}${event.endAge != null ? ' – ${event.endAge}' : ''}',
-              style: const TextStyle(
-                color: FinSpanTheme.bodyGray,
-                fontSize: 14,
-              ),
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                icon: const Icon(LucideIcons.trash2, color: Colors.red),
-                label: const Text(
-                  'Remove Event',
-                  style: TextStyle(color: Colors.red),
-                ),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Colors.red),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+
+                  // Header
+                  Row(
+                    children: [
+                      Container(
+                        width: 46, height: 46,
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(_getEventIcon(ev.type), color: color, size: 22),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              ev.name,
+                              style: const TextStyle(
+                                fontSize: 17, fontWeight: FontWeight.bold,
+                                color: FinSpanTheme.charcoal,
+                              ),
+                            ),
+                            Text(
+                              'Age ${ev.startAge}${ev.endAge != null ? ' – ${ev.endAge}' : ''}',
+                              style: const TextStyle(
+                                fontSize: 12, color: FinSpanTheme.bodyGray,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _saveHistory();
-                  setState(() {
-                    _events.removeWhere((e) => e.id == event.id);
-                    _recalculate();
-                  });
-                },
+                  const SizedBox(height: 16),
+
+                  // ── Timing card ──────────────────────────────────────────
+                  _editorCard(
+                    label: 'TIMING',
+                    children: [
+                      pSlider(
+                        'Start Age', 'Age ${ev.startAge}',
+                        ev.startAge.toDouble(),
+                        startAgeMin, startAgeMax, startAgeDivisions,
+                        (v) => updateStartAge(v.round()),
+                      ),
+                      if (ev.endAge != null)
+                        pSlider(
+                          'Duration', _fmtYears(curDuration.toDouble()),
+                          curDuration.toDouble(), 1, 50, 49,
+                          (v) => updateDuration(v.round()),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+
+                  // ── Parameters card (event-specific) ─────────────────────
+                  if (controls.isNotEmpty) ...[
+                    _editorCard(label: 'PARAMETERS', children: controls),
+                    const SizedBox(height: 10),
+                  ],
+
+                  // Live preview tip
+                  Center(
+                    child: Text(
+                      '⚡ Chart updates live as you drag',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey[500],
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Delete button
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      icon: const Icon(LucideIcons.trash2, color: Colors.red, size: 16),
+                      label: const Text(
+                        'Remove Event',
+                        style: TextStyle(color: Colors.red),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Colors.red),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _saveHistory();
+                        setState(() {
+                          _events.removeWhere((e) => e.id == ev.id);
+                          _recalculate();
+                        });
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Close'),
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Close'),
-              ),
-            ),
-          ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// Reusable card container used in the event editor.
+  Widget _editorCard({required String label, required List<Widget> children}) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: FinSpanTheme.dividerColor.withValues(alpha: 0.5),
         ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.2,
+              color: FinSpanTheme.bodyGray,
+            ),
+          ),
+          const SizedBox(height: 6),
+          ...children,
+        ],
       ),
     );
   }
@@ -697,15 +1113,44 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Wealth Trajectory',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Wealth Trajectory',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  Text(
+                    'Live preview — drag to explore',
+                    style: TextStyle(color: FinSpanTheme.bodyGray, fontSize: 12),
+                  ),
+                ],
+              ),
+              Row(
+                children: [
+                  const Text(
+                    'Monte Carlo',
+                    style: TextStyle(fontSize: 12, color: FinSpanTheme.bodyGray),
+                  ),
+                  Switch(
+                    value: _enableMonteCarlo,
+                    onChanged: (v) => setState(() {
+                      _enableMonteCarlo = v;
+                      _recalculate();
+                    }),
+                    activeThumbColor: FinSpanTheme.primaryGreen,
+                    activeTrackColor: FinSpanTheme.primaryGreen.withValues(alpha: 0.4),
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ],
+              ),
+            ],
           ),
-          const Text(
-            'Live preview — drag to explore',
-            style: TextStyle(color: FinSpanTheme.bodyGray, fontSize: 12),
-          ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           SizedBox(
             height: 220,
             child: SfCartesianChart(
@@ -765,7 +1210,7 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
               series: <CartesianSeries>[
                 if (_enableMonteCarlo && _mcResult != null) ...[
                   SplineSeries<LocalWealthPoint, double>(
-                    dataSource: _wealthData, // The deterministic base plan
+                    dataSource: _deterministicData, // Deterministic base plan
                     xValueMapper: (d, _) => d.age.toDouble(),
                     yValueMapper: (d, _) => d.total,
                     color: const Color(0xFF6366F1), // Indigo/Blue
@@ -886,20 +1331,42 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
     switch (type) {
       case LifeEventType.job:
         return Colors.blue;
+      case LifeEventType.jobChange:
+        return Colors.teal;
+      case LifeEventType.jobLoss:
+        return Colors.orange;
+      case LifeEventType.sideHustle:
+        return Colors.amber;
+      case LifeEventType.careerBreak:
+        return Colors.cyan;
       case LifeEventType.home:
         return Colors.orange;
+      case LifeEventType.rent:
+        return Colors.brown;
       case LifeEventType.marriage:
         return Colors.pink;
       case LifeEventType.children:
         return Colors.purple;
+      case LifeEventType.familySupport:
+        return Colors.indigo;
       case LifeEventType.retirement:
         return Colors.green;
       case LifeEventType.education:
         return Colors.indigo;
       case LifeEventType.business:
         return Colors.teal;
-      default:
-        return Colors.grey;
+      case LifeEventType.health:
+        return Colors.red;
+      case LifeEventType.move:
+        return Colors.teal;
+      case LifeEventType.car:
+        return Colors.blueGrey;
+      case LifeEventType.vacation:
+        return Colors.cyan;
+      case LifeEventType.oneTimeExpense:
+        return Colors.deepOrange;
+      case LifeEventType.insurance:
+        return Colors.teal;
     }
   }
 
@@ -907,20 +1374,42 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
     switch (type) {
       case LifeEventType.job:
         return LucideIcons.briefcase;
+      case LifeEventType.jobChange:
+        return LucideIcons.arrowLeftRight;
+      case LifeEventType.jobLoss:
+        return LucideIcons.alertTriangle;
+      case LifeEventType.sideHustle:
+        return LucideIcons.star;
+      case LifeEventType.careerBreak:
+        return LucideIcons.plane;
       case LifeEventType.home:
         return LucideIcons.home;
+      case LifeEventType.rent:
+        return LucideIcons.building;
       case LifeEventType.marriage:
         return LucideIcons.heart;
       case LifeEventType.children:
         return LucideIcons.baby;
+      case LifeEventType.familySupport:
+        return LucideIcons.heartHandshake;
       case LifeEventType.retirement:
         return LucideIcons.palmtree;
       case LifeEventType.education:
         return LucideIcons.graduationCap;
       case LifeEventType.business:
         return LucideIcons.rocket;
-      default:
-        return LucideIcons.calendarDays;
+      case LifeEventType.health:
+        return LucideIcons.heartPulse;
+      case LifeEventType.move:
+        return LucideIcons.mapPin;
+      case LifeEventType.car:
+        return LucideIcons.car;
+      case LifeEventType.vacation:
+        return LucideIcons.plane;
+      case LifeEventType.oneTimeExpense:
+        return LucideIcons.receipt;
+      case LifeEventType.insurance:
+        return LucideIcons.shieldCheck;
     }
   }
 }

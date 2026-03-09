@@ -122,6 +122,11 @@ class _OnboardingStep6ScreenState extends State<OnboardingStep6Screen> {
                             (val) => widget.data.creditCardMonthly = val,
                             isCurrency: true,
                           ),
+                          _buildMiniInput(
+                            "Interest Rate (%)",
+                            widget.data.creditCardRate.toString(),
+                            (val) => widget.data.creditCardRate = val,
+                          ),
                         ],
                       ),
                     ),
@@ -133,20 +138,49 @@ class _OnboardingStep6ScreenState extends State<OnboardingStep6Screen> {
                         children: [
                           _buildHousingToggle(),
                           const SizedBox(height: 16),
-                          if (widget.data.housingStatus == "Rent")
+                          if (widget.data.housingStatus == "Rent") ...[
                             _buildMiniInput(
                               "Monthly Rent",
                               widget.data.monthlyRent.toInt().toString(),
                               (val) => widget.data.monthlyRent = val,
                               isCurrency: true,
-                            )
-                          else
+                            ),
                             _buildMiniInput(
-                              "Monthly Mortgage",
+                              "Rent Inflation Rate (%)",
+                              widget.data.rentInflation.toString(),
+                              (val) => widget.data.rentInflation = val,
+                            ),
+                          ] else ...[
+                            _buildMiniInput(
+                              "Home Value",
+                              widget.data.homeValue.toInt().toString(),
+                              (val) => widget.data.homeValue = val,
+                              isCurrency: true,
+                            ),
+                            _buildMiniInput(
+                              "Mortgage Balance",
+                              widget.data.mortgageBalance.toInt().toString(),
+                              (val) => widget.data.mortgageBalance = val,
+                              isCurrency: true,
+                            ),
+                            _buildMiniInput(
+                              "Mortgage Rate (%)",
+                              widget.data.mortgageRate.toString(),
+                              (val) => widget.data.mortgageRate = val,
+                            ),
+                            _buildMiniInput(
+                              "Mortgage Years Remaining",
+                              widget.data.mortgageYears.toString(),
+                              (val) =>
+                                  widget.data.mortgageYears = val.toInt(),
+                            ),
+                            _buildMiniInput(
+                              "Monthly Mortgage Payment",
                               widget.data.monthlyMortgage.toInt().toString(),
                               (val) => widget.data.monthlyMortgage = val,
                               isCurrency: true,
                             ),
+                          ],
                           const Divider(height: 32),
                           _buildSubHeader("Rental Property Income"),
                           _buildMiniInput(
@@ -205,6 +239,13 @@ class _OnboardingStep6ScreenState extends State<OnboardingStep6Screen> {
                             widget.data.businessGrowth.toString(),
                             (val) => widget.data.businessGrowth = val,
                           ),
+                          _buildMiniInput(
+                            "Business Ends at Age",
+                            (widget.data.businessEndsAtAge ?? 0).toString(),
+                            (val) => widget.data.businessEndsAtAge =
+                                val > 0 ? val.toInt() : null,
+                          ),
+                          _buildCaption("0 = business continues indefinitely"),
                         ],
                       ),
                     ),
@@ -217,17 +258,63 @@ class _OnboardingStep6ScreenState extends State<OnboardingStep6Screen> {
                           _buildMiniInput(
                             "Number of Children",
                             widget.data.numChildren.toString(),
-                            (val) => widget.data.numChildren = val.toInt(),
+                            (val) {
+                              setState(
+                                () => widget.data.numChildren = val.toInt(),
+                              );
+                            },
+                          ),
+                          if (widget.data.numChildren >= 1)
+                            _buildMiniInput(
+                              "Child 1 Current Age",
+                              widget.data.child1Age.toString(),
+                              (val) => widget.data.child1Age = val.toInt(),
+                            ),
+                          if (widget.data.numChildren >= 2)
+                            _buildMiniInput(
+                              "Child 2 Current Age",
+                              widget.data.child2Age.toString(),
+                              (val) => widget.data.child2Age = val.toInt(),
+                            ),
+                          if (widget.data.numChildren >= 3)
+                            _buildMiniInput(
+                              "Child 3 Current Age",
+                              widget.data.child3Age.toString(),
+                              (val) => widget.data.child3Age = val.toInt(),
+                            ),
+                          if (widget.data.numChildren >= 4)
+                            _buildMiniInput(
+                              "Child 4 Current Age",
+                              widget.data.child4Age.toString(),
+                              (val) => widget.data.child4Age = val.toInt(),
+                            ),
+                          const SizedBox(height: 8),
+                          _buildSubHeader("Monthly Expense Per Child (by age)"),
+                          _buildMiniInput(
+                            "Ages 0–5 / month",
+                            widget.data.childExpense0to5.toInt().toString(),
+                            (val) => widget.data.childExpense0to5 = val,
+                            isCurrency: true,
                           ),
                           _buildMiniInput(
-                            "Monthly Spending Per Child",
-                            widget.data.childMonthlySpending.toInt().toString(),
-                            (val) => widget.data.childMonthlySpending = val,
+                            "Ages 6–12 / month",
+                            widget.data.childExpense6to12.toInt().toString(),
+                            (val) {
+                              widget.data.childExpense6to12 = val;
+                              widget.data.childMonthlySpending =
+                                  val; // keep legacy field in sync
+                            },
+                            isCurrency: true,
+                          ),
+                          _buildMiniInput(
+                            "Ages 13–17 / month",
+                            widget.data.childExpense13to17.toInt().toString(),
+                            (val) => widget.data.childExpense13to17 = val,
                             isCurrency: true,
                           ),
                           const SizedBox(height: 16),
                           _buildMiniInput(
-                            "College Savings Goal (per child)",
+                            "College Cost / Year (per child)",
                             widget.data.collegeGoal.toInt().toString(),
                             (val) => widget.data.collegeGoal = val,
                             isCurrency: true,
@@ -293,6 +380,25 @@ class _OnboardingStep6ScreenState extends State<OnboardingStep6Screen> {
                             (val) => widget.data.insuranceCoverage = val,
                             isCurrency: true,
                           ),
+                          if (widget.data.insuranceType != 'none') ...[
+                            _buildMiniInput(
+                              "Monthly Premium",
+                              widget.data.lifeInsurancePremium
+                                  .toInt()
+                                  .toString(),
+                              (val) =>
+                                  widget.data.lifeInsurancePremium = val,
+                              isCurrency: true,
+                            ),
+                            if (widget.data.insuranceType == 'term')
+                              _buildMiniInput(
+                                "Policy Ends at Age",
+                                (widget.data.lifeInsuranceTermEndsAtAge ?? 0)
+                                    .toString(),
+                                (val) => widget.data.lifeInsuranceTermEndsAtAge =
+                                    val > 0 ? val.toInt() : null,
+                              ),
+                          ],
                         ],
                       ),
                     ),

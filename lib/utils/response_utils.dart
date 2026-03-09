@@ -10,44 +10,52 @@ class ResponseUtils {
     bool isSuccess = false,
   }) {
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Icon(
-              isError
-                  ? LucideIcons.alertCircle
-                  : isSuccess
-                  ? LucideIcons.checkCircle2
-                  : LucideIcons.info,
-              color: Colors.white,
-              size: 20,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                message,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w500,
-                  fontSize: 14,
+    // After async auth flows (e.g. Google Sign-In) the auth-state listener may
+    // navigate away before this line runs.  maybeOf avoids the "no messenger"
+    // throw, and the try-catch swallows the internal _isRoot ancestor traversal
+    // that still crashes when the ScaffoldMessengerState itself is deactivating.
+    try {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(
+                isError
+                    ? LucideIcons.alertCircle
+                    : isSuccess
+                    ? LucideIcons.checkCircle2
+                    : LucideIcons.info,
+                color: Colors.white,
+                size: 20,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  message,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w500,
+                    fontSize: 14,
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
+          backgroundColor: isError
+              ? Colors.redAccent.shade400
+              : isSuccess
+              ? FinSpanTheme.primaryGreen
+              : FinSpanTheme.charcoal,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.all(16),
+          duration: const Duration(seconds: 4),
+          elevation: 4,
         ),
-        backgroundColor: isError
-            ? Colors.redAccent.shade400
-            : isSuccess
-            ? FinSpanTheme.primaryGreen
-            : FinSpanTheme.charcoal,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.all(16),
-        duration: const Duration(seconds: 4),
-        elevation: 4,
-      ),
-    );
+      );
+    } catch (_) {
+      // Widget tree is mid-transition; the user has already moved to the next screen.
+    }
   }
 
   static void showModernDialog(

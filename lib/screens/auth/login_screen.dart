@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../theme/finspan_theme.dart';
 import '../../services/auth_service.dart';
 import '../../widgets/finspan_card.dart';
-import '../onboarding/onboarding_wrapper.dart';
-import '../dashboard/main_dashboard.dart';
-import '../../services/user_service.dart';
 import '../../utils/response_utils.dart';
 import 'signup_screen.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -38,38 +36,6 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  // ─── Navigation helper ────────────────────────────────────────────────────
-
-  Future<void> _navigateAfterLogin(UserCredential credential) async {
-    if (!context.mounted) return;
-
-    final UserService userService = UserService();
-    final hasData = await userService.hasCompletedOnboarding();
-    final userData = hasData ? await userService.getUserProfile() : null;
-
-    if (!context.mounted) return;
-
-    ResponseUtils.showPremiumSnackBar(
-      context,
-      'Welcome back, ${credential.user?.displayName ?? credential.user?.email ?? "User"}!',
-      isSuccess: true,
-    );
-
-    if (hasData && userData != null) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => MainDashboardScreen(data: userData),
-        ),
-      );
-    } else {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const OnboardingWrapper()),
-      );
-    }
-  }
-
   // ─── Email / Password Sign-In ─────────────────────────────────────────────
 
   Future<void> _handleEmailSignIn() async {
@@ -87,11 +53,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() => _isLoading = true);
     try {
-      final credential = await _authService.signInWithEmailAndPassword(
+      await _authService.signInWithEmailAndPassword(
         email: _emailController.text,
         password: _passwordController.text,
       );
-      await _navigateAfterLogin(credential);
+      // AuthGate's StreamBuilder detects the new user and navigates automatically.
     } on FirebaseAuthException catch (e) {
       if (context.mounted) {
         ResponseUtils.showPremiumSnackBar(
@@ -127,10 +93,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() => _isGoogleLoading = true);
     try {
-      final userCredential = await _authService.signInWithGoogle();
-      if (userCredential != null) {
-        await _navigateAfterLogin(userCredential);
-      }
+      await _authService.signInWithGoogle();
+      // Null return means user cancelled the picker — no error to show.
+      // On success, AuthGate's StreamBuilder navigates automatically.
     } on FirebaseAuthException catch (e) {
       if (context.mounted) {
         ResponseUtils.showPremiumSnackBar(
@@ -138,6 +103,15 @@ class _LoginScreenState extends State<LoginScreen> {
           AuthService.getFriendlyAuthError(e),
           isError: true,
         );
+      }
+    } on PlatformException catch (e) {
+      // Covers Google Sign-In SDK errors (e.g., network, Play Services, SHA mismatch)
+      if (context.mounted) {
+        final msg = e.code == 'sign_in_canceled'
+            ? 'Sign-in cancelled.'
+            : 'Google Sign-In failed (${e.code}). '
+                'Make sure Google Play Services is up to date and try again.';
+        ResponseUtils.showPremiumSnackBar(context, msg, isError: true);
       }
     } catch (e) {
       if (context.mounted) {
