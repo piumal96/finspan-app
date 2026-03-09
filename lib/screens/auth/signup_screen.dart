@@ -33,6 +33,7 @@ class SignUpScreen extends StatefulWidget {
 class _SignUpScreenState extends State<SignUpScreen> {
   final AuthService _authService = AuthService();
   final _formKey = GlobalKey<FormState>();
+  final _scrollController = ScrollController();
 
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -55,6 +56,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   @override
   void dispose() {
+    _scrollController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
@@ -66,13 +68,31 @@ class _SignUpScreenState extends State<SignUpScreen> {
     super.dispose();
   }
 
+  // Scroll to top so validation errors on the email/password fields
+  // are visible even when the user has scrolled down to the Sign Up button.
+  void _scrollToTop() {
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
   // ─── Sign-Up ──────────────────────────────────────────────────────────────
 
   Future<void> _handleSignUp() async {
-    if (!_formKey.currentState!.validate()) return;
+    // Run validators; if any field is invalid, scroll to the top so the
+    // user can see the red error messages (they may have scrolled down).
+    if (!_formKey.currentState!.validate()) {
+      _scrollToTop();
+      return;
+    }
 
     if (!_agreedToTerms) {
       setState(() => _showTermsError = true);
+      // Terms checkbox is near the bottom — no need to scroll.
       return;
     }
 
@@ -198,6 +218,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 480),
                   child: SingleChildScrollView(
+                    controller: _scrollController,
                     physics: const BouncingScrollPhysics(),
                     padding: EdgeInsets.symmetric(
                       horizontal: 24.0,

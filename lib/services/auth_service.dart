@@ -182,7 +182,7 @@ class AuthService {
       case 'invalid-credential':
         return 'Email or password is incorrect. Please try again.';
       case 'email-already-in-use':
-        return 'An account already exists with this email.';
+        return 'An account already exists with this email. Please sign in instead.';
       case 'weak-password':
         return 'Password is too weak. Use at least 8 characters.';
       case 'invalid-email':
