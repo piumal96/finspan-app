@@ -137,8 +137,17 @@ class AuthService {
         await credential.user?.reload();
       }
 
-      // Send email verification
-      await credential.user?.sendEmailVerification();
+      // Send email verification — best-effort. The account is already created
+      // and the user is signed in. A too-many-requests or network error here
+      // must not surface as an account-creation failure. The email can be
+      // resent later from the profile screen.
+      try {
+        await credential.user?.sendEmailVerification();
+      } catch (e) {
+        if (kDebugMode) {
+          print('📧 AuthService: sendEmailVerification failed (non-critical): $e');
+        }
+      }
 
       return credential;
     } on FirebaseAuthException catch (e) {
@@ -194,16 +203,21 @@ class AuthService {
   // ─── Sign Out ─────────────────────────────────────────────────────────────
 
   Future<void> signOut() async {
+    // Step 1 — Firebase sign-out (CRITICAL).
+    // This is the only thing AuthGate reacts to; must always run first.
+    if (isAvailable) {
+      await _auth.signOut(); // propagate real errors to the caller
+    }
+
+    // Step 2 — Google sign-out (BEST-EFFORT cache cleanup).
+    // A network hiccup here must not prevent the user from being logged out
+    // of the app. AuthGate has already reacted to the Firebase signOut above.
     try {
-      await Future.wait([
-        if (isAvailable) _auth.signOut(),
-        _googleSignIn.signOut(),
-      ]);
+      await _googleSignIn.signOut();
     } catch (e) {
       if (kDebugMode) {
-        print('🚪 AuthService: Logout error: $e');
+        print('🚪 AuthService: Google signOut cleanup failed (non-critical): $e');
       }
-      rethrow;
     }
   }
 }
