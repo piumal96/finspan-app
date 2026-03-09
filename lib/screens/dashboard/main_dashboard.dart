@@ -1258,28 +1258,14 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                     width: 1.5,
                   ),
                 ] else ...[
-                  StackedAreaSeries<LocalWealthPoint, double>(
+                  SplineAreaSeries<LocalWealthPoint, double>(
                     dataSource: _homeWealthData,
                     xValueMapper: (d, _) => d.age.toDouble(),
-                    yValueMapper: (d, _) => d.taxable,
-                    color: const Color(0xFF6B7280).withValues(alpha: 0.6),
-                    name: 'Taxable',
-                    animationDuration: 0,
-                  ),
-                  StackedAreaSeries<LocalWealthPoint, double>(
-                    dataSource: _homeWealthData,
-                    xValueMapper: (d, _) => d.age.toDouble(),
-                    yValueMapper: (d, _) => d.taxDeferred,
-                    color: const Color(0xFF10B981).withValues(alpha: 0.6),
-                    name: 'Tax-Deferred',
-                    animationDuration: 0,
-                  ),
-                  StackedAreaSeries<LocalWealthPoint, double>(
-                    dataSource: _homeWealthData,
-                    xValueMapper: (d, _) => d.age.toDouble(),
-                    yValueMapper: (d, _) => d.roth,
-                    color: const Color(0xFFF59E0B).withValues(alpha: 0.6),
-                    name: 'Roth',
+                    yValueMapper: (d, _) => d.total,
+                    color: const Color(0xFF6366F1).withValues(alpha: 0.15),
+                    borderColor: const Color(0xFF6366F1),
+                    borderWidth: 2.5,
+                    name: 'Your Plan',
                     animationDuration: 0,
                   ),
                 ],
@@ -1320,9 +1306,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                     ),
                   ]
                 : [
-                    _mcLegendDot('Taxable', const Color(0xFF6B7280)),
-                    _mcLegendDot('Tax-Deferred', const Color(0xFF10B981)),
-                    _mcLegendDot('Roth', const Color(0xFFF59E0B)),
+                    _mcLegendDot('Your Plan', const Color(0xFF6366F1)),
                   ],
           ),
         ],
