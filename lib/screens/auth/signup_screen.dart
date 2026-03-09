@@ -30,12 +30,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final AuthService _authService = AuthService();
   final _formKey = GlobalKey<FormState>();
 
-  final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
-  final _nameFocus = FocusNode();
   final _emailFocus = FocusNode();
   final _passwordFocus = FocusNode();
   final _confirmPasswordFocus = FocusNode();
@@ -49,11 +47,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   @override
   void dispose() {
-    _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
-    _nameFocus.dispose();
     _emailFocus.dispose();
     _passwordFocus.dispose();
     _confirmPasswordFocus.dispose();
@@ -86,7 +82,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
       await _authService.createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text,
-        displayName: _nameController.text.trim(),
       );
 
       if (context.mounted) {
@@ -247,24 +242,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Username
-                              _fieldLabel('Username'),
-                              const SizedBox(height: 8),
-                              TextFormField(
-                                controller: _nameController,
-                                focusNode: _nameFocus,
-                                enabled: !anyLoading,
-                                textInputAction: TextInputAction.next,
-                                onFieldSubmitted: (_) =>
-                                    FocusScope.of(context).requestFocus(_emailFocus),
-                                decoration:
-                                    _inputDecoration('Enter your username'),
-                                validator: (v) => (v == null || v.trim().isEmpty)
-                                    ? 'Username is required'
-                                    : null,
-                              ),
-                              const SizedBox(height: 20),
-
                               // Email
                               _fieldLabel('Email Address'),
                               const SizedBox(height: 8),
@@ -275,7 +252,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                 enabled: !anyLoading,
                                 textInputAction: TextInputAction.next,
                                 onFieldSubmitted: (_) =>
-                                    FocusScope.of(context).requestFocus(_passwordFocus),
+                                    FocusScope.of(context)
+                                        .requestFocus(_passwordFocus),
                                 decoration: _inputDecoration('Enter your email'),
                                 validator: (v) {
                                   if (v == null || v.trim().isEmpty) {
