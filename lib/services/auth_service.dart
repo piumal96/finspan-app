@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'local_storage_service.dart';
 
 class AuthService {
   // ─── Singleton ─────────────────────────────────────────────────────────────
@@ -203,13 +204,22 @@ class AuthService {
   // ─── Sign Out ─────────────────────────────────────────────────────────────
 
   Future<void> signOut() async {
+    // Capture UID before signing out (unavailable afterwards).
+    final uid = isAvailable ? (_auth.currentUser?.uid ?? '') : '';
+
     // Step 1 — Firebase sign-out (CRITICAL).
     // This is the only thing AuthGate reacts to; must always run first.
     if (isAvailable) {
       await _auth.signOut(); // propagate real errors to the caller
     }
 
-    // Step 2 — Google sign-out (BEST-EFFORT cache cleanup).
+    // Step 2 — Clear local Hive cache so the next user on this device
+    // starts fresh and doesn't see another account's financial data.
+    if (uid.isNotEmpty) {
+      await LocalStorageService.clearProfile(uid);
+    }
+
+    // Step 3 — Google sign-out (BEST-EFFORT cache cleanup).
     // A network hiccup here must not prevent the user from being logged out
     // of the app. AuthGate has already reacted to the Firebase signOut above.
     try {

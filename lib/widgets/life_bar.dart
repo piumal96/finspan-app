@@ -154,7 +154,23 @@ class _FinSpanLifeBarState extends State<FinSpanLifeBar> {
                     ),
                   ),
 
-                  // 2. Accumulation Phase Highlight
+                  // 2a. Past Segment (before current age) — visually dimmed
+                  Positioned(
+                    top: 72,
+                    left: 0,
+                    child: Container(
+                      height: 6,
+                      width: currentAgePos.clamp(0, constraints.maxWidth),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: const BorderRadius.horizontal(
+                          left: Radius.circular(3),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // 2b. Accumulation Phase Highlight
                   Positioned(
                     top: 72,
                     left: currentAgePos,
@@ -215,7 +231,35 @@ class _FinSpanLifeBarState extends State<FinSpanLifeBar> {
                     );
                   }),
 
-                  // 5. Draggable Current Age Handle
+                  // 5a. Empty state hint — shown when user has added no events
+                  if (widget.events.isEmpty)
+                    Positioned(
+                      top: 42,
+                      left: 0,
+                      right: 0,
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: FinSpanTheme.dividerColor.withValues(alpha: 0.6),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Text(
+                            '✦ Tap anywhere on the timeline to add an event',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: FinSpanTheme.bodyGray,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                  // 5c. Draggable Current Age Handle
                   Positioned(
                     left: currentAgePos - 12,
                     top: 45,
@@ -416,12 +460,18 @@ class _FinSpanLifeBarState extends State<FinSpanLifeBar> {
     // Decide what to render based on available width to avoid overflow.
     final bool showIcon = width >= 24;
     final bool showLabel = width >= 48;
+    final bool showAgeRange = width >= 80 && event.endAge != null;
+
+    final int durationYears = (event.endAge ?? event.startAge) - event.startAge;
+    final String ageRangeText = showAgeRange
+        ? '${event.startAge}–${event.endAge} (${durationYears}y)'
+        : '';
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(14),
       child: Container(
         width: width,
-        height: 28,
+        height: showAgeRange ? 34 : 28,
         padding: EdgeInsets.symmetric(horizontal: showIcon ? 4 : 0),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.1),
@@ -449,15 +499,32 @@ class _FinSpanLifeBarState extends State<FinSpanLifeBar> {
                   if (showLabel) ...[
                     const SizedBox(width: 4),
                     Flexible(
-                      child: Text(
-                        event.name,
-                        style: const TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.bold,
-                          color: FinSpanTheme.charcoal,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            event.name,
+                            style: const TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              color: FinSpanTheme.charcoal,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                          if (showAgeRange)
+                            Text(
+                              ageRangeText,
+                              style: TextStyle(
+                                fontSize: 7,
+                                color: color.withValues(alpha: 0.8),
+                                fontWeight: FontWeight.w600,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                        ],
                       ),
                     ),
                   ],

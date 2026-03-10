@@ -72,6 +72,9 @@ class LocalWealthCalculator {
     double initialTaxable = 0.0,
     double initialTaxDeferred = 0.0,
     double initialRoth = 0.0,
+    // Actual yearly non-housing non-retirement baseline expenses from the user's
+    // plan (My Plan → currentExpenses).  Defaults to $36K if not set (web default).
+    double baseYearlyExpenses = 36000.0,
   }) {
     final List<LocalWealthPoint> data = [];
     double taxable = initialTaxable;
@@ -80,7 +83,7 @@ class LocalWealthCalculator {
 
     for (int age = currentAge; age <= lifeExpectancy; age++) {
       double income = 0;
-      double expenses = 12000; // base living
+      double expenses = baseYearlyExpenses; // seeded from user plan
       bool isWorking = false;
       bool isRetired = false;
       bool hasPartner = false;
@@ -484,6 +487,7 @@ class LocalWealthCalculator {
     double initialTaxable = 0.0,
     double initialTaxDeferred = 0.0,
     double initialRoth = 0.0,
+    double baseYearlyExpenses = 36000.0,
   }) {
     final int yearsToSimulate = lifeExpectancy - currentAge + 1;
     final int numSimulations = 100;
@@ -522,6 +526,7 @@ class LocalWealthCalculator {
         initialTaxable: initialTaxable,
         initialTaxDeferred: initialTaxDeferred,
         initialRoth: initialRoth,
+        baseYearlyExpenses: baseYearlyExpenses,
       );
 
       allRuns.add(runData);

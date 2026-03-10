@@ -1,5 +1,7 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
+import '../../services/local_storage_service.dart';
 import '../../theme/finspan_theme.dart';
 import '../../widgets/finspan_card.dart';
 import '../../widgets/life_bar.dart';
@@ -13,7 +15,15 @@ import 'package:lucide_icons/lucide_icons.dart';
 class SimulatorLifeWeaverScreen extends StatefulWidget {
   final OnboardingData? data;
 
-  const SimulatorLifeWeaverScreen({super.key, this.data});
+  /// Called after every local recalculation with the latest wealth trajectory.
+  /// The home dashboard listens to this for real-time chart sync.
+  final ValueChanged<List<LocalWealthPoint>>? onWealthUpdated;
+
+  const SimulatorLifeWeaverScreen({
+    super.key,
+    this.data,
+    this.onWealthUpdated,
+  });
 
   @override
   State<SimulatorLifeWeaverScreen> createState() =>
@@ -47,8 +57,33 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
     super.initState();
     _currentAge = widget.data?.currentAge ?? 30;
     _lifeExpectancy = widget.data?.lifeExpectancy ?? 90;
-    _events = _buildDefaultEvents();
+    _loadFromHive();
+  }
+
+  String get _uid => FirebaseAuth.instance.currentUser?.uid ?? '';
+
+  void _loadFromHive() {
+    // Restore MC toggle state.
+    _enableMonteCarlo = LocalStorageService.loadMcEnabled(_uid);
+
+    // Restore custom events — fall back to defaults if nothing is saved yet.
+    final savedEvents = LocalStorageService.loadSimEvents(_uid);
+    final savedAge = LocalStorageService.loadSimCurrentAge(_uid);
+    if (savedEvents != null && savedEvents.isNotEmpty) {
+      _events = savedEvents;
+      if (savedAge != null) {
+        _currentAge = savedAge.clamp(18, _lifeExpectancy - 1);
+      }
+    } else {
+      _events = _buildDefaultEvents();
+    }
     _recalculate();
+  }
+
+  /// Persists current events and age to Hive after every mutation.
+  void _saveToHive() {
+    LocalStorageService.saveSimEvents(_uid, _events);
+    LocalStorageService.saveSimCurrentAge(_uid, _currentAge);
   }
 
   List<LifeEvent> _buildDefaultEvents() {
@@ -112,6 +147,15 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
       _currentAge,
       _events,
     );
+
+    // Notify home dashboard for real-time chart sync.
+    // Deferred to the next frame so we never call parent setState
+    // from inside our own setState callback.
+    if (widget.onWealthUpdated != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) widget.onWealthUpdated!(_wealthData);
+      });
+    }
   }
 
   void _saveHistory() {
@@ -138,6 +182,7 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
       _events = _history.removeLast();
       _recalculate();
     });
+    _saveToHive();
   }
 
   void _reset() {
@@ -147,19 +192,22 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
       _currentAge = widget.data?.currentAge ?? 30;
       _recalculate();
     });
+    _saveToHive();
   }
 
   void _onAgeChange(int newAge) {
     if (newAge == _currentAge) return;
     setState(() {
       _currentAge = newAge;
-      _recalculate(); // Local — instant, no API
+      _recalculate();
     });
+    _saveToHive();
   }
 
   void _onEventMove(String id, int newAge) {
     final index = _events.indexWhere((e) => e.id == id);
     if (index == -1 || _events[index].startAge == newAge) return;
+    _saveHistory();
     setState(() {
       final old = _events[index];
       _events[index] = LifeEvent(
@@ -172,8 +220,9 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
             : null,
         params: old.params,
       );
-      _recalculate(); // Local — instant, no API
+      _recalculate();
     });
+    _saveToHive();
   }
 
   void _addEvent(int age) {
@@ -424,6 +473,7 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
                           _events.add(newEvent);
                           _recalculate();
                         });
+                        _saveToHive();
 
                         // Immediately open editor for the new event to allow details config
                         Future.delayed(const Duration(milliseconds: 100), () {
@@ -485,6 +535,10 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
         return {'amount': 15000};
       case LifeEventType.insurance:
         return {'monthlyPremium': 100, 'coverageAmount': 500000};
+      case LifeEventType.jobLoss:
+        return {'gapMonths': 6.0, 'monthlySpending': 3000.0, 'hasSeverance': false, 'hasEmergencyFund': true};
+      case LifeEventType.careerBreak:
+        return {'breakMonths': 12.0, 'monthlySpending': 3000.0, 'hasSavings': true};
       default:
         return {};
     }
@@ -495,6 +549,35 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
   String _fmtPercent(double v) => '${v.toStringAsFixed(1)}%';
   String _fmtYears(double v) => '${v.toInt()} yr${v.toInt() != 1 ? 's' : ''}';
   String _fmtInt(double v) => v.toInt().toString();
+
+  Widget _buildToggleRow(
+    String label,
+    bool value,
+    ValueChanged<bool> onChanged,
+    StateSetter setModalState,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(fontSize: 13, color: FinSpanTheme.bodyGray),
+          ),
+          Switch(
+            value: value,
+            activeThumbColor: FinSpanTheme.primaryGreen,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            onChanged: (v) {
+              onChanged(v);
+              setModalState(() {});
+            },
+          ),
+        ],
+      ),
+    );
+  }
 
   // ─── Full event editor ──────────────────────────────────────────────────────
 
@@ -529,6 +612,7 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
               _recalculate();
             });
             setModalState(() {});
+            _saveToHive();
           }
 
           void updateStartAge(int newAge) {
@@ -543,6 +627,7 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
               _recalculate();
             });
             setModalState(() {});
+            _saveToHive();
           }
 
           void updateDuration(int newDur) {
@@ -556,6 +641,7 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
               _recalculate();
             });
             setModalState(() {});
+            _saveToHive();
           }
 
           // ── Slider widget helper ───────────────────────────────────────────
@@ -749,8 +835,42 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
                     p('termLength', 20), 1, 40, 39,
                     (v) => updateParam('termLength', v.roundToDouble())),
                 ];
-              default:
-                return []; // job-loss, career-break — timing only
+              case LifeEventType.jobLoss:
+                return [
+                  pSlider('Gap Duration (months)', _fmtInt(p('gapMonths', 6)),
+                    p('gapMonths', 6), 1, 24, 23,
+                    (v) => updateParam('gapMonths', v.roundToDouble())),
+                  pSlider('Monthly Spending During Gap', _formatMoney(p('monthlySpending', 3000)),
+                    p('monthlySpending', 3000), 500, 10000, 19,
+                    (v) => updateParam('monthlySpending', v)),
+                  _buildToggleRow(
+                    'Has Severance Pay',
+                    ev.params['hasSeverance'] as bool? ?? false,
+                    (v) => updateParam('hasSeverance', v),
+                    setModalState,
+                  ),
+                  _buildToggleRow(
+                    'Has Emergency Fund',
+                    ev.params['hasEmergencyFund'] as bool? ?? true,
+                    (v) => updateParam('hasEmergencyFund', v),
+                    setModalState,
+                  ),
+                ];
+              case LifeEventType.careerBreak:
+                return [
+                  pSlider('Break Duration (months)', _fmtInt(p('breakMonths', 12)),
+                    p('breakMonths', 12), 1, 36, 35,
+                    (v) => updateParam('breakMonths', v.roundToDouble())),
+                  pSlider('Monthly Spending', _formatMoney(p('monthlySpending', 3000)),
+                    p('monthlySpending', 3000), 500, 10000, 19,
+                    (v) => updateParam('monthlySpending', v)),
+                  _buildToggleRow(
+                    'Has Savings Buffer',
+                    ev.params['hasSavings'] as bool? ?? true,
+                    (v) => updateParam('hasSavings', v),
+                    setModalState,
+                  ),
+                ];
             }
           }
 
@@ -886,6 +1006,7 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
                           _events.removeWhere((e) => e.id == ev.id);
                           _recalculate();
                         });
+                        _saveToHive();
                       },
                     ),
                   ),
@@ -1138,10 +1259,13 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
                   ),
                   Switch(
                     value: _enableMonteCarlo,
-                    onChanged: (v) => setState(() {
-                      _enableMonteCarlo = v;
-                      _recalculate();
-                    }),
+                    onChanged: (v) {
+                      setState(() {
+                        _enableMonteCarlo = v;
+                        _recalculate();
+                      });
+                      LocalStorageService.saveMcEnabled(_uid, enabled: v);
+                    },
                     activeThumbColor: FinSpanTheme.primaryGreen,
                     activeTrackColor: FinSpanTheme.primaryGreen.withValues(alpha: 0.4),
                     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -1156,11 +1280,6 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
             child: SfCartesianChart(
               plotAreaBorderWidth: 0,
               margin: EdgeInsets.zero,
-              trackballBehavior: TrackballBehavior(
-                enable: true,
-                activationMode: ActivationMode.singleTap,
-                tooltipSettings: const InteractiveTooltip(enable: true),
-              ),
               primaryXAxis: NumericAxis(
                 minimum: _currentAge.toDouble(),
                 maximum: _lifeExpectancy.toDouble(),
@@ -1193,6 +1312,11 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
                 interval: dynamicMaxY / 4,
                 axisLine: const AxisLine(width: 0),
                 majorTickLines: const MajorTickLines(size: 0),
+                majorGridLines: MajorGridLines(
+                  width: 0.5,
+                  color: Colors.grey.withValues(alpha: 0.15),
+                  dashArray: const <double>[4, 4],
+                ),
                 axisLabelFormatter: (AxisLabelRenderDetails d) {
                   final v = d.value.toDouble();
                   if (v == 0) {
@@ -1206,6 +1330,24 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
                   }
                   return ChartAxisLabel('\$${(v / 1000).toInt()}K', null);
                 },
+                plotBands: <PlotBand>[
+                  PlotBand(
+                    isVisible: true,
+                    start: 0,
+                    end: 0,
+                    borderColor: Colors.red.shade400,
+                    borderWidth: 1.5,
+                    dashArray: const <double>[6, 4],
+                    text: 'Break Even',
+                    textStyle: TextStyle(
+                      color: Colors.red.shade500,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    horizontalTextAlignment: TextAnchor.end,
+                    verticalTextAlignment: TextAnchor.start,
+                  ),
+                ],
               ),
               series: <CartesianSeries>[
                 if (_enableMonteCarlo && _mcResult != null) ...[
@@ -1338,7 +1480,7 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
       case LifeEventType.education:
         return Colors.indigo;
       case LifeEventType.business:
-        return Colors.teal;
+        return Colors.purple;
       case LifeEventType.health:
         return Colors.red;
       case LifeEventType.move:

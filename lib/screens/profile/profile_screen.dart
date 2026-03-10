@@ -33,6 +33,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _data = _cloneData(widget.data ?? OnboardingData());
   }
 
+  @override
+  void didUpdateWidget(ProfileScreen old) {
+    super.didUpdateWidget(old);
+    // If the parent pushed genuinely new data (e.g. plan loaded from Firestore
+    // on a different session) AND the user has no unsaved edits, re-clone so
+    // My Plan always shows the latest committed values.
+    if (old.data != widget.data && !_hasChanges) {
+      setState(() => _data = _cloneData(widget.data ?? OnboardingData()));
+    }
+  }
+
   OnboardingData _cloneData(OnboardingData src) {
     final d = OnboardingData()
       ..includePartner = src.includePartner
@@ -725,11 +736,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required int max,
     required ValueChanged<int> onChanged,
   }) {
-    final ctrl = TextEditingController(text: value.toString());
     return _FieldRow(
       label: label,
       child: _CompactIntField(
-        controller: ctrl,
+        value: value,
         min: min,
         max: max,
         onChanged: onChanged,
@@ -742,12 +752,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required double value,
     required ValueChanged<double> onChanged,
   }) {
-    final ctrl = TextEditingController(
-      text: value == 0 ? '0' : _fmt.format(value),
-    );
     return _FieldRow(
       label: label,
-      child: _CompactCurrencyField(controller: ctrl, onChanged: onChanged),
+      child: _CompactCurrencyField(value: value, onChanged: onChanged),
     );
   }
 
@@ -756,10 +763,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required double value,
     required ValueChanged<double> onChanged,
   }) {
-    final ctrl = TextEditingController(text: value.toStringAsFixed(1));
     return _FieldRow(
       label: label,
-      child: _CompactPercentField(controller: ctrl, onChanged: onChanged),
+      child: _CompactPercentField(value: value, onChanged: onChanged),
     );
   }
 
@@ -979,23 +985,62 @@ class _FieldRow extends StatelessWidget {
   }
 }
 
-class _CompactIntField extends StatelessWidget {
-  final TextEditingController controller;
+// ─────────────────────────────────────────────────────────────────────────────
+// All three input widgets are StatefulWidget so they own their controllers.
+// Creating a controller inside build() is the classic "can't type" Flutter bug:
+// every setState() recreates the controller, resets the text, and drops focus.
+// didUpdateWidget syncs external value changes only while the field is NOT
+// focused — so programmatic resets work without interrupting the user.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _CompactIntField extends StatefulWidget {
+  final int value;
   final int min;
   final int max;
   final ValueChanged<int> onChanged;
 
   const _CompactIntField({
-    required this.controller,
+    required this.value,
     required this.min,
     required this.max,
     required this.onChanged,
   });
 
   @override
+  State<_CompactIntField> createState() => _CompactIntFieldState();
+}
+
+class _CompactIntFieldState extends State<_CompactIntField> {
+  late final TextEditingController _ctrl;
+  late final FocusNode _focus;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.value.toString());
+    _focus = FocusNode();
+  }
+
+  @override
+  void didUpdateWidget(_CompactIntField old) {
+    super.didUpdateWidget(old);
+    if (old.value != widget.value && !_focus.hasFocus) {
+      _ctrl.text = widget.value.toString();
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return TextField(
-      controller: controller,
+      controller: _ctrl,
+      focusNode: _focus,
       keyboardType: TextInputType.number,
       textAlign: TextAlign.right,
       style: const TextStyle(
@@ -1017,27 +1062,58 @@ class _CompactIntField extends StatelessWidget {
       ),
       onChanged: (v) {
         final parsed = int.tryParse(v);
-        if (parsed != null) {
-          onChanged(parsed.clamp(min, max));
-        }
+        if (parsed != null) widget.onChanged(parsed.clamp(widget.min, widget.max));
       },
     );
   }
 }
 
-class _CompactCurrencyField extends StatelessWidget {
-  final TextEditingController controller;
+class _CompactCurrencyField extends StatefulWidget {
+  final double value;
   final ValueChanged<double> onChanged;
 
   const _CompactCurrencyField({
-    required this.controller,
+    required this.value,
     required this.onChanged,
   });
 
   @override
+  State<_CompactCurrencyField> createState() => _CompactCurrencyFieldState();
+}
+
+class _CompactCurrencyFieldState extends State<_CompactCurrencyField> {
+  late final TextEditingController _ctrl;
+  late final FocusNode _focus;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(
+        text: widget.value == 0 ? '0' : widget.value.toStringAsFixed(0));
+    _focus = FocusNode();
+  }
+
+  @override
+  void didUpdateWidget(_CompactCurrencyField old) {
+    super.didUpdateWidget(old);
+    if (old.value != widget.value && !_focus.hasFocus) {
+      _ctrl.text =
+          widget.value == 0 ? '0' : widget.value.toStringAsFixed(0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return TextField(
-      controller: controller,
+      controller: _ctrl,
+      focusNode: _focus,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       textAlign: TextAlign.right,
       style: const TextStyle(
@@ -1060,27 +1136,57 @@ class _CompactCurrencyField extends StatelessWidget {
         ),
       ),
       onChanged: (v) {
-        final cleaned = v.replaceAll(',', '');
-        final parsed = double.tryParse(cleaned);
-        if (parsed != null) onChanged(parsed);
+        final parsed = double.tryParse(v.replaceAll(',', ''));
+        if (parsed != null) widget.onChanged(parsed);
       },
     );
   }
 }
 
-class _CompactPercentField extends StatelessWidget {
-  final TextEditingController controller;
+class _CompactPercentField extends StatefulWidget {
+  final double value;
   final ValueChanged<double> onChanged;
 
   const _CompactPercentField({
-    required this.controller,
+    required this.value,
     required this.onChanged,
   });
 
   @override
+  State<_CompactPercentField> createState() => _CompactPercentFieldState();
+}
+
+class _CompactPercentFieldState extends State<_CompactPercentField> {
+  late final TextEditingController _ctrl;
+  late final FocusNode _focus;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.value.toStringAsFixed(1));
+    _focus = FocusNode();
+  }
+
+  @override
+  void didUpdateWidget(_CompactPercentField old) {
+    super.didUpdateWidget(old);
+    if (old.value != widget.value && !_focus.hasFocus) {
+      _ctrl.text = widget.value.toStringAsFixed(1);
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return TextField(
-      controller: controller,
+      controller: _ctrl,
+      focusNode: _focus,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       textAlign: TextAlign.right,
       style: const TextStyle(
@@ -1104,7 +1210,7 @@ class _CompactPercentField extends StatelessWidget {
       ),
       onChanged: (v) {
         final parsed = double.tryParse(v);
-        if (parsed != null) onChanged(parsed);
+        if (parsed != null) widget.onChanged(parsed);
       },
     );
   }
