@@ -1229,11 +1229,30 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
   }
 
   Widget _buildWealthChart(double dynamicMaxY) {
+    // ── Reference age markers ─────────────────────────────────────────────
+    final double retireAge = _events
+        .where((e) => e.type == LifeEventType.retirement)
+        .map((e) => e.startAge.toDouble())
+        .fold<double>(widget.data?.retirementAge.toDouble() ?? 65, (_, a) => a);
+    final double ssAge =
+        (widget.data?.socialSecurityAge ?? 67).toDouble();
+    final double lifeExpAge = _lifeExpectancy.toDouble();
+
+    // Home equity added to total for "Net Worth incl. Real Estate"
+    final double homeEquity = widget.data?.housingStatus == 'Own'
+        ? (widget.data!.homeValue - widget.data!.mortgageBalance)
+            .clamp(0, double.infinity)
+        : 0;
+
+    // ── Band width for reference lines ────────────────────────────────────
+    const double bw = 0.3;
+
     return FinSpanCard(
       padding: const EdgeInsets.all(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Header ───────────────────────────────────────────────────────
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1243,11 +1262,16 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
                 children: [
                   Text(
                     'Wealth Trajectory',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                        color: FinSpanTheme.charcoal,
+                        letterSpacing: -0.3),
                   ),
                   Text(
-                    'Live preview — drag to explore',
-                    style: TextStyle(color: FinSpanTheme.bodyGray, fontSize: 12),
+                    'Based on your simulation',
+                    style: TextStyle(
+                        color: FinSpanTheme.bodyGray, fontSize: 11),
                   ),
                 ],
               ),
@@ -1255,7 +1279,8 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
                 children: [
                   const Text(
                     'Monte Carlo',
-                    style: TextStyle(fontSize: 12, color: FinSpanTheme.bodyGray),
+                    style:
+                        TextStyle(fontSize: 11, color: FinSpanTheme.bodyGray),
                   ),
                   Switch(
                     value: _enableMonteCarlo,
@@ -1267,42 +1292,99 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
                       LocalStorageService.saveMcEnabled(_uid, enabled: v);
                     },
                     activeThumbColor: FinSpanTheme.primaryGreen,
-                    activeTrackColor: FinSpanTheme.primaryGreen.withValues(alpha: 0.4),
+                    activeTrackColor:
+                        FinSpanTheme.primaryGreen.withValues(alpha: 0.4),
                     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                 ],
               ),
             ],
           ),
+
           const SizedBox(height: 12),
+
+          // ── Chart ─────────────────────────────────────────────────────────
           SizedBox(
-            height: 220,
+            height: 240,
             child: SfCartesianChart(
               plotAreaBorderWidth: 0,
               margin: EdgeInsets.zero,
               primaryXAxis: NumericAxis(
                 minimum: _currentAge.toDouble(),
-                maximum: _lifeExpectancy.toDouble(),
+                maximum: lifeExpAge,
                 interval: 10,
                 majorGridLines: const MajorGridLines(width: 0),
-                axisLabelFormatter: (AxisLabelRenderDetails d) {
-                  return ChartAxisLabel('Age ${d.value.toInt()}', null);
-                },
+                axisLine: const AxisLine(width: 0),
+                majorTickLines: const MajorTickLines(size: 0),
+                axisLabelFormatter: (AxisLabelRenderDetails d) =>
+                    ChartAxisLabel('${d.value.toInt()}', null),
                 plotBands: [
+                  // ── Current age (green solid) ──────────────────────────
                   PlotBand(
                     isVisible: true,
-                    start: _currentAge.toDouble(),
-                    end: _currentAge.toDouble() + 0.4,
-                    color: FinSpanTheme.primaryGreen.withValues(alpha: 0.9),
+                    start: _currentAge.toDouble() - bw / 2,
+                    end: _currentAge.toDouble() + bw / 2,
+                    color: FinSpanTheme.primaryGreen.withValues(alpha: 0.25),
+                    borderColor: FinSpanTheme.primaryGreen,
+                    borderWidth: 2,
                     text: 'Age $_currentAge',
                     textAngle: 0,
                     textStyle: const TextStyle(
-                      color: Colors.white,
+                      color: FinSpanTheme.primaryGreen,
                       fontSize: 9,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w700,
                     ),
                     horizontalTextAlignment: TextAnchor.start,
                     verticalTextAlignment: TextAnchor.end,
+                  ),
+                  // ── Retirement age (orange dashed) ─────────────────────
+                  if (retireAge > _currentAge)
+                    PlotBand(
+                      isVisible: true,
+                      start: retireAge - bw / 2,
+                      end: retireAge + bw / 2,
+                      color: const Color(0xFFF59E0B).withValues(alpha: 0.10),
+                      borderColor: const Color(0xFFF59E0B),
+                      borderWidth: 1.8,
+                      dashArray: const <double>[5, 4],
+                      text: 'Retire',
+                      textAngle: 0,
+                      textStyle: const TextStyle(
+                        color: Color(0xFFF59E0B),
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      horizontalTextAlignment: TextAnchor.start,
+                      verticalTextAlignment: TextAnchor.end,
+                    ),
+                  // ── Social Security age (blue dotted) ──────────────────
+                  if (ssAge > _currentAge && ssAge != retireAge)
+                    PlotBand(
+                      isVisible: true,
+                      start: ssAge - bw / 2,
+                      end: ssAge + bw / 2,
+                      color: const Color(0xFF3B82F6).withValues(alpha: 0.10),
+                      borderColor: const Color(0xFF3B82F6),
+                      borderWidth: 1.5,
+                      dashArray: const <double>[2, 3],
+                      text: 'SS',
+                      textAngle: 0,
+                      textStyle: const TextStyle(
+                        color: Color(0xFF3B82F6),
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      horizontalTextAlignment: TextAnchor.start,
+                      verticalTextAlignment: TextAnchor.end,
+                    ),
+                  // ── Life expectancy (red solid) ────────────────────────
+                  PlotBand(
+                    isVisible: true,
+                    start: lifeExpAge - bw / 2,
+                    end: lifeExpAge + bw / 2,
+                    color: Colors.red.withValues(alpha: 0.08),
+                    borderColor: Colors.red.shade400,
+                    borderWidth: 2,
                   ),
                 ],
               ),
@@ -1314,19 +1396,15 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
                 majorTickLines: const MajorTickLines(size: 0),
                 majorGridLines: MajorGridLines(
                   width: 0.5,
-                  color: Colors.grey.withValues(alpha: 0.15),
+                  color: Colors.grey.withValues(alpha: 0.12),
                   dashArray: const <double>[4, 4],
                 ),
                 axisLabelFormatter: (AxisLabelRenderDetails d) {
                   final v = d.value.toDouble();
-                  if (v == 0) {
-                    return ChartAxisLabel('\$0', null);
-                  }
+                  if (v == 0) return ChartAxisLabel('\$0', null);
                   if (v >= 1000000) {
                     return ChartAxisLabel(
-                      '\$${(v / 1000000).toStringAsFixed(1)}M',
-                      null,
-                    );
+                        '\$${(v / 1000000).toStringAsFixed(1)}M', null);
                   }
                   return ChartAxisLabel('\$${(v / 1000).toInt()}K', null);
                 },
@@ -1335,92 +1413,63 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
                     isVisible: true,
                     start: 0,
                     end: 0,
-                    borderColor: Colors.red.shade400,
-                    borderWidth: 1.5,
+                    borderColor: Colors.red.shade300,
+                    borderWidth: 1,
                     dashArray: const <double>[6, 4],
                     text: 'Break Even',
                     textStyle: TextStyle(
-                      color: Colors.red.shade500,
+                      color: Colors.red.shade400,
                       fontSize: 9,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w600,
                     ),
                     horizontalTextAlignment: TextAnchor.end,
                     verticalTextAlignment: TextAnchor.start,
                   ),
                 ],
               ),
-              series: <CartesianSeries>[
-                if (_enableMonteCarlo && _mcResult != null) ...[
-                  SplineSeries<LocalWealthPoint, double>(
-                    dataSource: _deterministicData, // Deterministic base plan
-                    xValueMapper: (d, _) => d.age.toDouble(),
-                    yValueMapper: (d, _) => d.total,
-                    color: const Color(0xFF6366F1), // Indigo/Blue
-                    name: 'Your Plan',
-                    animationDuration: 0,
-                    width: 3,
-                  ),
-                  SplineSeries<LocalWealthPoint, double>(
-                    dataSource: _mcResult!.p90,
-                    xValueMapper: (d, _) => d.age.toDouble(),
-                    yValueMapper: (d, _) => d.total,
-                    color: FinSpanTheme.primaryGreen.withValues(alpha: 0.8),
-                    name: '90th Percentile',
-                    animationDuration: 0,
-                    dashArray: const <double>[5, 5],
-                    width: 1.5,
-                  ),
-                  SplineSeries<LocalWealthPoint, double>(
-                    dataSource: _mcResult!.median,
-                    xValueMapper: (d, _) => d.age.toDouble(),
-                    yValueMapper: (d, _) => d.total,
-                    color: const Color(0xFFF59E0B), // Orange
-                    name: '50th Percentile',
-                    animationDuration: 0,
-                    width: 2,
-                  ),
-                  SplineSeries<LocalWealthPoint, double>(
-                    dataSource: _mcResult!.p10,
-                    xValueMapper: (d, _) => d.age.toDouble(),
-                    yValueMapper: (d, _) => d.total,
-                    color: Colors.red.withValues(alpha: 0.8),
-                    name: '10th Percentile',
-                    animationDuration: 0,
-                    dashArray: const <double>[5, 5],
-                    width: 1.5,
-                  ),
-                ] else ...[
-                  SplineAreaSeries<LocalWealthPoint, double>(
-                    dataSource: _wealthData,
-                    xValueMapper: (d, _) => d.age.toDouble(),
-                    yValueMapper: (d, _) => d.total,
-                    color: const Color(0xFF6366F1).withValues(alpha: 0.15),
-                    borderColor: const Color(0xFF6366F1),
-                    borderWidth: 2.5,
-                    name: 'Your Plan',
-                    animationDuration: 0,
-                  ),
-                ],
-              ],
+              series: _enableMonteCarlo && _mcResult != null
+                  ? _buildMcSeries()
+                  : _buildStackedSeries(homeEquity),
             ),
           ),
-          const SizedBox(height: 12),
+
+          const SizedBox(height: 10),
+
+          // ── Legend ────────────────────────────────────────────────────────
           Wrap(
-            alignment: WrapAlignment.center,
+            spacing: 14,
+            runSpacing: 6,
+            children: _enableMonteCarlo
+                ? [
+                    _legendItem('Your Plan', const Color(0xFF6366F1),
+                        isLine: true),
+                    _legendItem('90th Pct', FinSpanTheme.primaryGreen,
+                        isLine: true, dashed: true),
+                    _legendItem('50th Pct', const Color(0xFFF59E0B),
+                        isLine: true),
+                    _legendItem('10th Pct', Colors.red.shade400,
+                        isLine: true, dashed: true),
+                  ]
+                : [
+                    _legendItem('Taxable', const Color(0xFF4ECDC4)),
+                    _legendItem('Tax-Deferred', const Color(0xFF7C3AED)),
+                    _legendItem('Roth', const Color(0xFF10B981)),
+                    _legendItem(
+                        'Net Worth', const Color(0xFF9CA3AF), isLine: true),
+                  ],
+          ),
+
+          // ── Marker legend ─────────────────────────────────────────────────
+          const SizedBox(height: 6),
+          Wrap(
             spacing: 12,
             runSpacing: 4,
             children: [
-              if (_enableMonteCarlo) ...[
-                _legendDot('Your Plan', const Color(0xFF6366F1)),
-                _legendDot(
-                  '90th Pct',
-                  FinSpanTheme.primaryGreen.withValues(alpha: 0.8),
-                ),
-                _legendDot('10th Pct', Colors.red.withValues(alpha: 0.8)),
-                _legendDot('50th Pct', const Color(0xFFF59E0B)),
-              ] else ...[
-                _legendDot('Your Plan', const Color(0xFF6366F1)),
-              ],
+              _markerLabel('Retirement', const Color(0xFFF59E0B),
+                  dashed: true),
+              _markerLabel('Social Security', const Color(0xFF3B82F6),
+                  dotted: true),
+              _markerLabel('Life Expectancy', Colors.red.shade400),
             ],
           ),
         ],
@@ -1428,20 +1477,151 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
     );
   }
 
-  Widget _legendDot(String label, Color color) {
+  List<CartesianSeries> _buildStackedSeries(double homeEquity) => [
+        // ── Taxable (bottom layer) ──────────────────────────────────────────
+        StackedAreaSeries<LocalWealthPoint, double>(
+          dataSource: _wealthData,
+          xValueMapper: (d, _) => d.age.toDouble(),
+          yValueMapper: (d, _) => d.taxable.clamp(0, double.infinity),
+          name: 'Taxable',
+          groupName: 'wealth',
+          color: const Color(0xFF4ECDC4).withValues(alpha: 0.55),
+          borderColor: const Color(0xFF4ECDC4),
+          borderWidth: 1,
+          animationDuration: 0,
+        ),
+        // ── Tax-Deferred (middle) ───────────────────────────────────────────
+        StackedAreaSeries<LocalWealthPoint, double>(
+          dataSource: _wealthData,
+          xValueMapper: (d, _) => d.age.toDouble(),
+          yValueMapper: (d, _) => d.taxDeferred.clamp(0, double.infinity),
+          name: 'Tax-Deferred',
+          groupName: 'wealth',
+          color: const Color(0xFF7C3AED).withValues(alpha: 0.55),
+          borderColor: const Color(0xFF7C3AED),
+          borderWidth: 1,
+          animationDuration: 0,
+        ),
+        // ── Roth (top layer) ────────────────────────────────────────────────
+        StackedAreaSeries<LocalWealthPoint, double>(
+          dataSource: _wealthData,
+          xValueMapper: (d, _) => d.age.toDouble(),
+          yValueMapper: (d, _) => d.roth.clamp(0, double.infinity),
+          name: 'Roth',
+          groupName: 'wealth',
+          color: const Color(0xFF10B981).withValues(alpha: 0.55),
+          borderColor: const Color(0xFF10B981),
+          borderWidth: 1,
+          animationDuration: 0,
+        ),
+        // ── Net Worth dots line ─────────────────────────────────────────────
+        SplineSeries<LocalWealthPoint, double>(
+          dataSource: _wealthData,
+          xValueMapper: (d, _) => d.age.toDouble(),
+          yValueMapper: (d, _) =>
+              (d.total + homeEquity).clamp(0, double.infinity),
+          name: 'Net Worth',
+          color: const Color(0xFF9CA3AF),
+          width: 1.5,
+          markerSettings: const MarkerSettings(
+            isVisible: true,
+            height: 4,
+            width: 4,
+            shape: DataMarkerType.circle,
+            color: Color(0xFF9CA3AF),
+            borderWidth: 0,
+          ),
+          animationDuration: 0,
+        ),
+      ];
+
+  List<CartesianSeries> _buildMcSeries() => [
+        SplineSeries<LocalWealthPoint, double>(
+          dataSource: _deterministicData,
+          xValueMapper: (d, _) => d.age.toDouble(),
+          yValueMapper: (d, _) => d.total,
+          name: 'Your Plan',
+          color: const Color(0xFF6366F1),
+          width: 2.5,
+          animationDuration: 0,
+        ),
+        SplineSeries<LocalWealthPoint, double>(
+          dataSource: _mcResult!.p90,
+          xValueMapper: (d, _) => d.age.toDouble(),
+          yValueMapper: (d, _) => d.total,
+          name: '90th Pct',
+          color: FinSpanTheme.primaryGreen.withValues(alpha: 0.8),
+          width: 1.5,
+          dashArray: const <double>[5, 4],
+          animationDuration: 0,
+        ),
+        SplineSeries<LocalWealthPoint, double>(
+          dataSource: _mcResult!.median,
+          xValueMapper: (d, _) => d.age.toDouble(),
+          yValueMapper: (d, _) => d.total,
+          name: '50th Pct',
+          color: const Color(0xFFF59E0B),
+          width: 2,
+          animationDuration: 0,
+        ),
+        SplineSeries<LocalWealthPoint, double>(
+          dataSource: _mcResult!.p10,
+          xValueMapper: (d, _) => d.age.toDouble(),
+          yValueMapper: (d, _) => d.total,
+          name: '10th Pct',
+          color: Colors.red.withValues(alpha: 0.8),
+          width: 1.5,
+          dashArray: const <double>[5, 4],
+          animationDuration: 0,
+        ),
+      ];
+
+  Widget _legendItem(String label, Color color,
+      {bool isLine = false, bool dashed = false}) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        isLine
+            ? SizedBox(
+                width: 18,
+                child: CustomPaint(
+                  size: const Size(18, 8),
+                  painter: _LinePainter(color: color, dashed: dashed),
+                ),
+              )
+            : Container(
+                width: 10,
+                height: 10,
+                decoration:
+                    BoxDecoration(color: color, shape: BoxShape.circle),
+              ),
+        const SizedBox(width: 5),
+        Text(label,
+            style:
+                const TextStyle(fontSize: 10, color: FinSpanTheme.bodyGray)),
+      ],
+    );
+  }
+
+  Widget _markerLabel(String label, Color color,
+      {bool dashed = false, bool dotted = false}) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 14,
+          child: CustomPaint(
+            size: const Size(14, 8),
+            painter: _LinePainter(
+                color: color, dashed: dashed || dotted, vertical: true),
+          ),
         ),
         const SizedBox(width: 4),
-        Text(
-          label,
-          style: const TextStyle(fontSize: 10, color: FinSpanTheme.bodyGray),
-        ),
+        Text(label,
+            style: TextStyle(
+                fontSize: 9.5,
+                color: color,
+                fontWeight: FontWeight.w600)),
       ],
     );
   }
@@ -1547,4 +1727,51 @@ class _EventOption {
   final Color color;
 
   const _EventOption(this.type, this.label, this.icon, this.color);
+}
+
+/// Draws a small horizontal line (solid or dashed) for legend use.
+/// When [vertical] is true draws a vertical tick for the marker legend.
+class _LinePainter extends CustomPainter {
+  final Color color;
+  final bool dashed;
+  final bool vertical;
+  const _LinePainter(
+      {required this.color, this.dashed = false, this.vertical = false});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = vertical ? 2 : 1.5
+      ..style = PaintingStyle.stroke;
+
+    if (vertical) {
+      final cx = size.width / 2;
+      if (dashed) {
+        double y = 0;
+        while (y < size.height) {
+          canvas.drawLine(Offset(cx, y), Offset(cx, (y + 2).clamp(0, size.height)), paint);
+          y += 4;
+        }
+      } else {
+        canvas.drawLine(Offset(cx, 0), Offset(cx, size.height), paint);
+      }
+      return;
+    }
+
+    final cy = size.height / 2;
+    if (dashed) {
+      double x = 0;
+      while (x < size.width) {
+        canvas.drawLine(Offset(x, cy), Offset((x + 4).clamp(0, size.width), cy), paint);
+        x += 7;
+      }
+    } else {
+      canvas.drawLine(Offset(0, cy), Offset(size.width, cy), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_LinePainter old) =>
+      old.color != color || old.dashed != dashed;
 }

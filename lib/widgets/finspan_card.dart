@@ -23,9 +23,16 @@ class FinSpanCard extends StatelessWidget {
         boxShadow: hasShadow
             ? [
                 BoxShadow(
-                  color: FinSpanTheme.charcoal.withValues(alpha: 0.03),
-                  blurRadius: 15,
+                  color: Colors.black.withValues(alpha: 0.06),
+                  blurRadius: 16,
+                  spreadRadius: 0,
                   offset: const Offset(0, 4),
+                ),
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.03),
+                  blurRadius: 4,
+                  spreadRadius: 0,
+                  offset: const Offset(0, 1),
                 ),
               ]
             : null,

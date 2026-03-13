@@ -330,25 +330,13 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
     // Personalize greeting with user's display name
     final String? displayName = FirebaseAuth.instance.currentUser?.displayName;
     final String firstName = displayName?.split(' ').first ?? '';
-    final String greeting = firstName.isNotEmpty
-        ? 'Hi, $firstName 👋'
-        : 'Hi, Welcome back 👋';
 
     return Scaffold(
       backgroundColor: FinSpanTheme.backgroundLight,
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(64),
         child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 12,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
+          color: FinSpanTheme.backgroundLight,
           child: SafeArea(
             bottom: false,
             child: Padding(
@@ -356,57 +344,25 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // Logo mark
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [
-                          FinSpanTheme.primaryGreen,
-                          FinSpanTheme.vibrantGreen,
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Center(
-                      child: Text(
-                        'FS',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 12,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          greeting,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 15,
-                            color: FinSpanTheme.charcoal,
-                            letterSpacing: -0.3,
-                          ),
+                    child: RichText(
+                      text: TextSpan(
+                        style: const TextStyle(
+                          fontSize: 20,
+                          color: FinSpanTheme.charcoal,
+                          letterSpacing: -0.3,
                         ),
-                        const Text(
-                          'Your financial dashboard',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: FinSpanTheme.bodyGray,
-                            fontWeight: FontWeight.w400,
+                        children: [
+                          const TextSpan(
+                            text: 'Welcome, ',
+                            style: TextStyle(fontWeight: FontWeight.w400),
                           ),
-                        ),
-                      ],
+                          TextSpan(
+                            text: firstName.isNotEmpty ? '$firstName!' : 'back!',
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   // User avatar button
@@ -419,9 +375,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                         color: FinSpanTheme.primaryGreen.withValues(alpha: 0.1),
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: FinSpanTheme.primaryGreen.withValues(
-                            alpha: 0.2,
-                          ),
+                          color: FinSpanTheme.primaryGreen.withValues(alpha: 0.25),
                           width: 1.5,
                         ),
                       ),
@@ -528,11 +482,6 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
 
             // 5. Portfolio Breakdown
             _buildPortfolioBreakdown(),
-
-            const SizedBox(height: 24),
-
-            // 6. Quick Action Banner
-            _buildSimulationBanner(context),
 
             const SizedBox(height: 32),
           ],
@@ -1252,16 +1201,17 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
       ),
     ];
 
-    final double cardW =
-        (MediaQuery.of(context).size.width - 32) * 0.52; // ~52% of usable width
+    final double screenW = MediaQuery.of(context).size.width;
+    // Show 2 full cards + a sliver (~30px) of the 3rd to signal scrollability
+    final double cardW = (screenW - 32 - 12 - 30) / 2; // (screen - padding - gap - peek) / 2
 
     // Bust out of the parent's 16px padding so the carousel starts flush with
     // the screen edge and the leading card has its own left gutter.
     return Transform.translate(
       offset: const Offset(-16, 0),
       child: SizedBox(
-        width: MediaQuery.of(context).size.width,
-        height: 120,
+        width: screenW,
+        height: 118,
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
           clipBehavior: Clip.none,
@@ -1276,13 +1226,18 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFF0F0F0)),
+                  borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.04),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
+                      color: Colors.black.withValues(alpha: 0.07),
+                      blurRadius: 16,
+                      spreadRadius: 0,
+                      offset: const Offset(0, 4),
+                    ),
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 3,
+                      offset: const Offset(0, 1),
                     ),
                   ],
                 ),
@@ -1297,27 +1252,27 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                         color: color.withValues(alpha: 0.10),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: Icon(icon, color: color, size: 17),
+                      child: Icon(icon, color: color, size: 16),
                     ),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          value,
-                          style: const TextStyle(
-                            fontSize: 19,
-                            fontWeight: FontWeight.w900,
-                            color: FinSpanTheme.charcoal,
-                            letterSpacing: -0.5,
-                          ),
-                        ),
-                        const SizedBox(height: 1),
                         Text(
                           title,
                           style: const TextStyle(
                             fontSize: 11,
                             color: FinSpanTheme.bodyGray,
                             fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          value,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            color: FinSpanTheme.charcoal,
+                            letterSpacing: -0.5,
                           ),
                         ),
                       ],
@@ -1983,73 +1938,69 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
   }
 
   Widget _buildBottomNav() {
-    const navItems = [
-      _NavItem(LucideIcons.layoutDashboard, 'Home'),
-      _NavItem(LucideIcons.wallet, 'Accounts'),
-      _NavItem(LucideIcons.lineChart, 'Simulator'),
-      _NavItem(LucideIcons.userCog, 'My Plan'),
+    const navIcons = [
+      LucideIcons.home,
+      LucideIcons.wallet,
+      LucideIcons.lineChart,
+      LucideIcons.user,
     ];
 
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 20,
-            offset: const Offset(0, -4),
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 8, 24, 12),
+        child: Container(
+          height: 62,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(32),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.10),
+                blurRadius: 24,
+                spreadRadius: 0,
+                offset: const Offset(0, 6),
+              ),
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
           child: Row(
-            children: List.generate(navItems.length, (index) {
-              final item = navItems[index];
+            children: List.generate(navIcons.length, (index) {
               final isSelected = _selectedIndex == index;
               return Expanded(
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: () => setState(() => _selectedIndex = index),
                   child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
+                    duration: const Duration(milliseconds: 220),
                     curve: Curves.easeInOut,
-                    padding: const EdgeInsets.symmetric(vertical: 8),
                     child: Column(
-                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          padding: EdgeInsets.all(isSelected ? 8 : 4),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? FinSpanTheme.primaryGreen.withValues(
-                                    alpha: 0.12,
-                                  )
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
+                        AnimatedScale(
+                          scale: isSelected ? 1.15 : 1.0,
+                          duration: const Duration(milliseconds: 220),
+                          curve: Curves.easeInOut,
                           child: Icon(
-                            item.icon,
-                            size: 20,
+                            navIcons[index],
+                            size: 22,
                             color: isSelected
-                                ? FinSpanTheme.primaryGreen
-                                : const Color(0xFFB0B8C1),
+                                ? const Color(0xFF1A2332)
+                                : const Color(0xFFCBD5E1),
                           ),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          item.label,
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: isSelected
-                                ? FontWeight.w700
-                                : FontWeight.w500,
-                            color: isSelected
-                                ? FinSpanTheme.primaryGreen
-                                : const Color(0xFFB0B8C1),
+                        const SizedBox(height: 5),
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 220),
+                          width: isSelected ? 5 : 0,
+                          height: isSelected ? 5 : 0,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF1A2332),
+                            shape: BoxShape.circle,
                           ),
                         ),
                       ],
@@ -2092,11 +2043,6 @@ class _ReturnBar {
   const _ReturnBar(this.age, this.returnPct);
 }
 
-class _NavItem {
-  final IconData icon;
-  final String label;
-  const _NavItem(this.icon, this.label);
-}
 
 /// Draws a small dashed horizontal line — used in the legend to represent
 /// the dashed percentile series (P90/Median/P10) visually.
