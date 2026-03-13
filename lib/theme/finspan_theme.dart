@@ -15,7 +15,7 @@ class FinSpanTheme {
   static const Color dividerColor = Color(0xFFDFE3E8); // MUI Divider
 
   // Constants
-  static const double cardRadius = 8.0;
+  static const double cardRadius = 16.0;
 
   static ThemeData get lightTheme {
     return ThemeData(

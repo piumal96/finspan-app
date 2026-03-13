@@ -1,9 +1,11 @@
-import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../../services/auth_service.dart';
 import '../../theme/finspan_theme.dart';
 import '../../widgets/finspan_card.dart';
 import '../onboarding/onboarding_data.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 
 /// Callback invoked when the user saves updated data and wants to re-simulate.
 typedef OnDataSaved = void Function(OnboardingData updated);
@@ -29,6 +31,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.initState();
     // Deep-copy so edits don't mutate the parent directly until saved
     _data = _cloneData(widget.data ?? OnboardingData());
+  }
+
+  @override
+  void didUpdateWidget(ProfileScreen old) {
+    super.didUpdateWidget(old);
+    // If the parent pushed genuinely new data (e.g. plan loaded from Firestore
+    // on a different session) AND the user has no unsaved edits, re-clone so
+    // My Plan always shows the latest committed values.
+    if (old.data != widget.data && !_hasChanges) {
+      setState(() => _data = _cloneData(widget.data ?? OnboardingData()));
+    }
   }
 
   OnboardingData _cloneData(OnboardingData src) {
@@ -149,7 +162,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           : null,
                       child: user?.photoURL == null
                           ? const Icon(
-                              Icons.person,
+                              LucideIcons.user,
                               size: 32,
                               color: FinSpanTheme.primaryGreen,
                             )
@@ -434,7 +447,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               // ── Section 5: Housing, Debts & Expenses ───────────────
               _AccordionSection(
-                icon: Icons.home_outlined,
+                icon: LucideIcons.home,
                 title: 'Housing, Debts & Expenses',
                 color: const Color(0xFFF44336),
                 children: [
@@ -636,17 +649,56 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     const Divider(height: 1),
                     _buildAccountAction(
                       context,
-                      icon: Icons.logout_rounded,
+                      icon: LucideIcons.logOut,
                       title: 'Log Out',
                       color: Colors.redAccent,
                       onTap: () async {
-                        await FirebaseAuth.instance.signOut();
-                        if (context.mounted) {
-                          Navigator.of(
-                            context,
-                          ).pushNamedAndRemoveUntil('/login', (route) => false);
+                        // ── Confirmation dialog ──────────────────────────
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text('Log Out'),
+                            content: const Text(
+                              'Are you sure you want to log out? You will need to sign back in.',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: const Text('Cancel'),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, true),
+                                child: const Text(
+                                  'Log Out',
+                                  style: TextStyle(color: Colors.redAccent),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirmed == true) {
+                          // Capture Navigator BEFORE the await. After signOut()
+                          // returns, this widget may be in the inactive state
+                          // (context.mounted returns true for inactive elements,
+                          // but Navigator.of(context) would throw). Using the
+                          // pre-captured NavigatorState avoids the crash.
+                          final navigator = Navigator.of(context);
+                          await AuthService().signOut();
+                          // Pop back to root so AuthGate's LandingScreen is
+                          // visible. No-op for returning users whose dashboard
+                          // lives in Route0; required for new users where
+                          // MainDashboard is pushed as Route1 after onboarding.
+                          navigator.popUntil((route) => route.isFirst);
                         }
                       },
+                    ),
+                    const Divider(height: 1),
+                    _buildAccountAction(
+                      context,
+                      icon: LucideIcons.trash,
+                      title: 'Delete Account',
+                      color: Colors.red.shade800,
+                      onTap: () => _showDeleteAccountDialog(context),
                     ),
                   ],
                 ),
@@ -684,11 +736,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required int max,
     required ValueChanged<int> onChanged,
   }) {
-    final ctrl = TextEditingController(text: value.toString());
     return _FieldRow(
       label: label,
       child: _CompactIntField(
-        controller: ctrl,
+        value: value,
         min: min,
         max: max,
         onChanged: onChanged,
@@ -701,12 +752,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required double value,
     required ValueChanged<double> onChanged,
   }) {
-    final ctrl = TextEditingController(
-      text: value == 0 ? '0' : _fmt.format(value),
-    );
     return _FieldRow(
       label: label,
-      child: _CompactCurrencyField(controller: ctrl, onChanged: onChanged),
+      child: _CompactCurrencyField(value: value, onChanged: onChanged),
     );
   }
 
@@ -715,10 +763,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required double value,
     required ValueChanged<double> onChanged,
   }) {
-    final ctrl = TextEditingController(text: value.toStringAsFixed(1));
     return _FieldRow(
       label: label,
-      child: _CompactPercentField(controller: ctrl, onChanged: onChanged),
+      child: _CompactPercentField(value: value, onChanged: onChanged),
     );
   }
 
@@ -766,11 +813,92 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       ),
       trailing: Icon(
-        Icons.chevron_right_rounded,
+        LucideIcons.chevronRight,
         color: Colors.grey.withValues(alpha: 0.5),
       ),
       onTap: onTap,
     );
+  }
+
+  Future<void> _showDeleteAccountDialog(BuildContext context) async {
+    String typed = '';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlgState) => AlertDialog(
+          title: const Text('Delete Account'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '⚠️ This action is permanent. All your data will be deleted and cannot be recovered.',
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Type DELETE to confirm:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                autofocus: true,
+                onChanged: (v) => setDlgState(() => typed = v),
+                decoration: const InputDecoration(
+                  hintText: 'DELETE',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: typed == 'DELETE'
+                  ? () => Navigator.pop(ctx, true)
+                  : null,
+              child: Text(
+                'Delete Forever',
+                style: TextStyle(
+                  color: typed == 'DELETE' ? Colors.red.shade800 : Colors.grey,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed == true && context.mounted) {
+      // Capture Navigator before the awaits — same reason as sign-out:
+      // context.mounted returns true for inactive elements but
+      // Navigator.of(context) would throw on a deactivated element.
+      final navigator = Navigator.of(context);
+      try {
+        // Delete the Firebase account and sign out.
+        await FirebaseAuth.instance.currentUser?.delete();
+        await AuthService().signOut();
+        navigator.popUntil((route) => route.isFirst);
+      } on FirebaseAuthException catch (e) {
+        if (context.mounted) {
+          try {
+            ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+              SnackBar(
+                content: Text(
+                  e.code == 'requires-recent-login'
+                      ? 'Please sign out and sign back in before deleting your account.'
+                      : 'Failed to delete account. Please try again.',
+                ),
+                backgroundColor: Colors.red,
+              ),
+            );
+          } catch (_) {}
+        }
+      }
+    }
   }
 }
 
@@ -857,23 +985,62 @@ class _FieldRow extends StatelessWidget {
   }
 }
 
-class _CompactIntField extends StatelessWidget {
-  final TextEditingController controller;
+// ─────────────────────────────────────────────────────────────────────────────
+// All three input widgets are StatefulWidget so they own their controllers.
+// Creating a controller inside build() is the classic "can't type" Flutter bug:
+// every setState() recreates the controller, resets the text, and drops focus.
+// didUpdateWidget syncs external value changes only while the field is NOT
+// focused — so programmatic resets work without interrupting the user.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _CompactIntField extends StatefulWidget {
+  final int value;
   final int min;
   final int max;
   final ValueChanged<int> onChanged;
 
   const _CompactIntField({
-    required this.controller,
+    required this.value,
     required this.min,
     required this.max,
     required this.onChanged,
   });
 
   @override
+  State<_CompactIntField> createState() => _CompactIntFieldState();
+}
+
+class _CompactIntFieldState extends State<_CompactIntField> {
+  late final TextEditingController _ctrl;
+  late final FocusNode _focus;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.value.toString());
+    _focus = FocusNode();
+  }
+
+  @override
+  void didUpdateWidget(_CompactIntField old) {
+    super.didUpdateWidget(old);
+    if (old.value != widget.value && !_focus.hasFocus) {
+      _ctrl.text = widget.value.toString();
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return TextField(
-      controller: controller,
+      controller: _ctrl,
+      focusNode: _focus,
       keyboardType: TextInputType.number,
       textAlign: TextAlign.right,
       style: const TextStyle(
@@ -895,27 +1062,58 @@ class _CompactIntField extends StatelessWidget {
       ),
       onChanged: (v) {
         final parsed = int.tryParse(v);
-        if (parsed != null) {
-          onChanged(parsed.clamp(min, max));
-        }
+        if (parsed != null) widget.onChanged(parsed.clamp(widget.min, widget.max));
       },
     );
   }
 }
 
-class _CompactCurrencyField extends StatelessWidget {
-  final TextEditingController controller;
+class _CompactCurrencyField extends StatefulWidget {
+  final double value;
   final ValueChanged<double> onChanged;
 
   const _CompactCurrencyField({
-    required this.controller,
+    required this.value,
     required this.onChanged,
   });
 
   @override
+  State<_CompactCurrencyField> createState() => _CompactCurrencyFieldState();
+}
+
+class _CompactCurrencyFieldState extends State<_CompactCurrencyField> {
+  late final TextEditingController _ctrl;
+  late final FocusNode _focus;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(
+        text: widget.value == 0 ? '0' : widget.value.toStringAsFixed(0));
+    _focus = FocusNode();
+  }
+
+  @override
+  void didUpdateWidget(_CompactCurrencyField old) {
+    super.didUpdateWidget(old);
+    if (old.value != widget.value && !_focus.hasFocus) {
+      _ctrl.text =
+          widget.value == 0 ? '0' : widget.value.toStringAsFixed(0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return TextField(
-      controller: controller,
+      controller: _ctrl,
+      focusNode: _focus,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       textAlign: TextAlign.right,
       style: const TextStyle(
@@ -938,27 +1136,57 @@ class _CompactCurrencyField extends StatelessWidget {
         ),
       ),
       onChanged: (v) {
-        final cleaned = v.replaceAll(',', '');
-        final parsed = double.tryParse(cleaned);
-        if (parsed != null) onChanged(parsed);
+        final parsed = double.tryParse(v.replaceAll(',', ''));
+        if (parsed != null) widget.onChanged(parsed);
       },
     );
   }
 }
 
-class _CompactPercentField extends StatelessWidget {
-  final TextEditingController controller;
+class _CompactPercentField extends StatefulWidget {
+  final double value;
   final ValueChanged<double> onChanged;
 
   const _CompactPercentField({
-    required this.controller,
+    required this.value,
     required this.onChanged,
   });
 
   @override
+  State<_CompactPercentField> createState() => _CompactPercentFieldState();
+}
+
+class _CompactPercentFieldState extends State<_CompactPercentField> {
+  late final TextEditingController _ctrl;
+  late final FocusNode _focus;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.value.toStringAsFixed(1));
+    _focus = FocusNode();
+  }
+
+  @override
+  void didUpdateWidget(_CompactPercentField old) {
+    super.didUpdateWidget(old);
+    if (old.value != widget.value && !_focus.hasFocus) {
+      _ctrl.text = widget.value.toStringAsFixed(1);
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return TextField(
-      controller: controller,
+      controller: _ctrl,
+      focusNode: _focus,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       textAlign: TextAlign.right,
       style: const TextStyle(
@@ -982,7 +1210,7 @@ class _CompactPercentField extends StatelessWidget {
       ),
       onChanged: (v) {
         final parsed = double.tryParse(v);
-        if (parsed != null) onChanged(parsed);
+        if (parsed != null) widget.onChanged(parsed);
       },
     );
   }

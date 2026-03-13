@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
 import '../../theme/finspan_theme.dart';
 import '../../widgets/finspan_card.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 
 class WhatIfAnalysisScreen extends StatefulWidget {
   const WhatIfAnalysisScreen({super.key});
@@ -32,7 +33,7 @@ class _WhatIfAnalysisScreenState extends State<WhatIfAnalysisScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh, color: FinSpanTheme.charcoal),
+            icon: const Icon(LucideIcons.refreshCw, color: FinSpanTheme.charcoal),
             onPressed: () {
               setState(() {
                 _retireAge = 60;

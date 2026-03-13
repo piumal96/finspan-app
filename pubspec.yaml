@@ -42,9 +42,11 @@ dependencies:
   cloud_firestore: ^5.6.3
   http: ^1.2.2
   shared_preferences: ^2.3.5
+  hive_flutter: ^1.1.0
   syncfusion_flutter_charts: ^28.2.3
   syncfusion_flutter_sliders: ^28.2.12
   intl: ^0.19.0
+  lucide_icons: ^0.257.0
 
 dev_dependencies:
   flutter_test:
@@ -88,6 +90,12 @@ flutter:
     - assets/images/app_icon.png
     - assets/images/full_logo.png
     - assets/images/landing_illustration.png
+    - assets/images/carousel_1.png
+    - assets/images/carousel_2.png
+    - assets/images/carousel_3.png
+    - assets/images/carousel_1_nobg.png
+    - assets/images/carousel_2_nobg.png
+    - assets/images/carousel_3_nobg.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

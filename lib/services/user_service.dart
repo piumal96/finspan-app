@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import '../screens/onboarding/onboarding_data.dart';
 
 class UserService {
@@ -17,7 +18,7 @@ class UserService {
           .doc(user.uid)
           .set(data.toMap(), SetOptions(merge: true));
     } catch (e) {
-      print('Error saving user profile: $e');
+      if (kDebugMode) print('Error saving user profile: $e');
       rethrow;
     }
   }
@@ -33,12 +34,13 @@ class UserService {
         return OnboardingData.fromMap(doc.data()!);
       }
     } catch (e) {
-      print('Error fetching user profile: $e');
+      if (kDebugMode) print('Error fetching user profile: $e');
     }
     return null;
   }
 
-  // Check if the user has completed onboarding
+  // Check if the user has completed onboarding.
+  // Also returns the profile data in one call to avoid a double Firestore read.
   Future<bool> hasCompletedOnboarding() async {
     final user = _auth.currentUser;
     if (user == null) return false;

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/finspan_theme.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 
 class DashboardAlertCard extends StatelessWidget {
   final String title;
@@ -31,7 +32,7 @@ class DashboardAlertCard extends StatelessWidget {
         : FinSpanTheme.primaryGreen;
     final IconData icon = isWarning
         ? Icons.warning_amber_rounded
-        : Icons.check_circle_outline;
+        : LucideIcons.checkCircle2;
 
     return Container(
       width: double.infinity,
@@ -61,7 +62,7 @@ class DashboardAlertCard extends StatelessWidget {
               if (onDismiss != null)
                 IconButton(
                   onPressed: onDismiss,
-                  icon: const Icon(Icons.close, size: 18),
+                  icon: const Icon(LucideIcons.x, size: 18),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
                   visualDensity: VisualDensity.compact,

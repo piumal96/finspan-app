@@ -18,8 +18,29 @@ class OnboardingStep2Screen extends StatefulWidget {
 }
 
 class _OnboardingStep2ScreenState extends State<OnboardingStep2Screen> {
-  final TextEditingController _nameController = TextEditingController();
-  String _selectedGender = "Male";
+  late final TextEditingController _nameController;
+  late String _selectedGender;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(
+      text: widget.data.firstName.isNotEmpty ? widget.data.firstName : '',
+    );
+    _selectedGender = widget.data.gender.isNotEmpty
+        ? widget.data.gender
+        : 'Male';
+    // Persist initial values in case user doesn't edit them
+    _nameController.addListener(() {
+      widget.data.firstName = _nameController.text.trim();
+    });
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -280,7 +301,10 @@ class _OnboardingStep2ScreenState extends State<OnboardingStep2Screen> {
   Widget _buildGenderOption(String label, IconData icon) {
     bool isSelected = _selectedGender == label;
     return GestureDetector(
-      onTap: () => setState(() => _selectedGender = label),
+      onTap: () => setState(() {
+        _selectedGender = label;
+        widget.data.gender = label;
+      }),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(

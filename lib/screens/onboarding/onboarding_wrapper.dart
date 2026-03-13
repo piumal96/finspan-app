@@ -9,6 +9,7 @@ import 'onboarding_step_5.dart';
 import 'onboarding_step_6.dart';
 import 'onboarding_data.dart';
 import '../dashboard/main_dashboard.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 
 class OnboardingWrapper extends StatefulWidget {
   const OnboardingWrapper({super.key});
@@ -41,11 +42,10 @@ class _OnboardingWrapperState extends State<OnboardingWrapper> {
   }
 
   void _navigateToSimulation() {
-    // Skip the API simulation runner — go directly to the dashboard.
-    // The Simulator tab and Wealth Trajectory chart use LocalWealthCalculator
-    // for instant, real-time results without any network call.
-    Navigator.pushReplacement(
-      context,
+    // Use pushAndRemoveUntil keeping the root route (AuthGate) alive.
+    // pushReplacement would dispose AuthGate, breaking the auth-driven
+    // sign-out navigation (AuthGate reacts to signOut by showing LandingScreen).
+    Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(
         builder: (context) => MainDashboardScreen(
           data: _onboardingData,
@@ -53,6 +53,7 @@ class _OnboardingWrapperState extends State<OnboardingWrapper> {
           fromSim: false,
         ),
       ),
+      (route) => route.isFirst, // keep Route0 (AuthGate)
     );
   }
 
@@ -63,21 +64,26 @@ class _OnboardingWrapperState extends State<OnboardingWrapper> {
         curve: Curves.fastLinearToSlowEaseIn,
       );
     } else {
-      Navigator.pop(context);
+      // On step 0 only pop if there is a route beneath us.
+      // If OnboardingWrapper is the root content (AuthGate is Route0), there
+      // is nothing to pop to — doing so would close the app on Android.
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: FinSpanTheme.backgroundLight,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: FinSpanTheme.backgroundLight,
         elevation: 0,
         toolbarHeight: 44,
         leading: IconButton(
           icon: const Icon(
-            Icons.arrow_back,
+            LucideIcons.arrowLeft,
             color: FinSpanTheme.charcoal,
             size: 20,
           ),

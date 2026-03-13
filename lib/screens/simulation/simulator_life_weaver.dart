@@ -1,19 +1,29 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
-import 'package:syncfusion_flutter_sliders/sliders.dart';
+import '../../services/local_storage_service.dart';
 import '../../theme/finspan_theme.dart';
 import '../../widgets/finspan_card.dart';
 import '../../widgets/life_bar.dart';
 import '../../models/simulation_models.dart';
 import '../../utils/local_wealth_calculator.dart';
 import '../onboarding/onboarding_data.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 
 /// Mobile port of web's SimulatorLifeWeaver.
 /// Calculates wealth 100% locally — no API calls, fully real-time.
 class SimulatorLifeWeaverScreen extends StatefulWidget {
   final OnboardingData? data;
 
-  const SimulatorLifeWeaverScreen({super.key, this.data});
+  /// Called after every local recalculation with the latest wealth trajectory.
+  /// The home dashboard listens to this for real-time chart sync.
+  final ValueChanged<List<LocalWealthPoint>>? onWealthUpdated;
+
+  const SimulatorLifeWeaverScreen({
+    super.key,
+    this.data,
+    this.onWealthUpdated,
+  });
 
   @override
   State<SimulatorLifeWeaverScreen> createState() =>
@@ -32,8 +42,9 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
 
   // Monte Carlo State
   bool _enableMonteCarlo = false;
-  double _luckPercentile = 50.0;
   LocalMonteCarloResult? _mcResult;
+  // Deterministic (base) plan — used as "Your Plan" overlay when MC is active
+  List<LocalWealthPoint> _deterministicData = [];
 
   // History for undo
   final List<List<LifeEvent>> _history = [];
@@ -46,8 +57,33 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
     super.initState();
     _currentAge = widget.data?.currentAge ?? 30;
     _lifeExpectancy = widget.data?.lifeExpectancy ?? 90;
-    _events = _buildDefaultEvents();
+    _loadFromHive();
+  }
+
+  String get _uid => FirebaseAuth.instance.currentUser?.uid ?? '';
+
+  void _loadFromHive() {
+    // Restore MC toggle state.
+    _enableMonteCarlo = LocalStorageService.loadMcEnabled(_uid);
+
+    // Restore custom events — fall back to defaults if nothing is saved yet.
+    final savedEvents = LocalStorageService.loadSimEvents(_uid);
+    final savedAge = LocalStorageService.loadSimCurrentAge(_uid);
+    if (savedEvents != null && savedEvents.isNotEmpty) {
+      _events = savedEvents;
+      if (savedAge != null) {
+        _currentAge = savedAge.clamp(18, _lifeExpectancy - 1);
+      }
+    } else {
+      _events = _buildDefaultEvents();
+    }
     _recalculate();
+  }
+
+  /// Persists current events and age to Hive after every mutation.
+  void _saveToHive() {
+    LocalStorageService.saveSimEvents(_uid, _events);
+    LocalStorageService.saveSimCurrentAge(_uid, _currentAge);
   }
 
   List<LifeEvent> _buildDefaultEvents() {
@@ -78,21 +114,32 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
   }
 
   void _recalculate() {
+    final double initTaxable = widget.data?.taxableSavings ?? 0;
+    final double initTaxDeferred = widget.data?.taxDeferredSavings ?? 0;
+    final double initRoth = widget.data?.taxFreeSavings ?? 0;
+
+    // Always compute the deterministic path — it's the "Your Plan" baseline
+    _deterministicData = LocalWealthCalculator.calculate(
+      _events,
+      _currentAge,
+      _lifeExpectancy,
+      initialTaxable: initTaxable,
+      initialTaxDeferred: initTaxDeferred,
+      initialRoth: initRoth,
+    );
+    _wealthData = _deterministicData;
+
     if (_enableMonteCarlo) {
       _mcResult = LocalWealthCalculator.calculateMonteCarlo(
         _events,
         _currentAge,
         _lifeExpectancy,
+        initialTaxable: initTaxable,
+        initialTaxDeferred: initTaxDeferred,
+        initialRoth: initRoth,
       );
-      // For insight cards, base them on the median run to prevent them from jumping around wildly
-      _wealthData = _mcResult!.median;
     } else {
       _mcResult = null;
-      _wealthData = LocalWealthCalculator.calculate(
-        _events,
-        _currentAge,
-        _lifeExpectancy,
-      );
     }
 
     _insights = LocalWealthCalculator.insights(
@@ -100,6 +147,15 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
       _currentAge,
       _events,
     );
+
+    // Notify home dashboard for real-time chart sync.
+    // Deferred to the next frame so we never call parent setState
+    // from inside our own setState callback.
+    if (widget.onWealthUpdated != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) widget.onWealthUpdated!(_wealthData);
+      });
+    }
   }
 
   void _saveHistory() {
@@ -126,6 +182,7 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
       _events = _history.removeLast();
       _recalculate();
     });
+    _saveToHive();
   }
 
   void _reset() {
@@ -135,19 +192,22 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
       _currentAge = widget.data?.currentAge ?? 30;
       _recalculate();
     });
+    _saveToHive();
   }
 
   void _onAgeChange(int newAge) {
     if (newAge == _currentAge) return;
     setState(() {
       _currentAge = newAge;
-      _recalculate(); // Local — instant, no API
+      _recalculate();
     });
+    _saveToHive();
   }
 
   void _onEventMove(String id, int newAge) {
     final index = _events.indexWhere((e) => e.id == id);
     if (index == -1 || _events[index].startAge == newAge) return;
+    _saveHistory();
     setState(() {
       final old = _events[index];
       _events[index] = LifeEvent(
@@ -160,8 +220,9 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
             : null,
         params: old.params,
       );
-      _recalculate(); // Local — instant, no API
+      _recalculate();
     });
+    _saveToHive();
   }
 
   void _addEvent(int age) {
@@ -176,35 +237,40 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
     _saveHistory();
     final categories = <String, List<_EventOption>>{
       '💼 Work & Income': [
-        _EventOption(LifeEventType.job, 'New Job', Icons.work, Colors.blue),
+        _EventOption(
+          LifeEventType.job,
+          'New Job',
+          LucideIcons.briefcase,
+          Colors.blue,
+        ),
         _EventOption(
           LifeEventType.sideHustle,
           'Side Income',
-          Icons.star,
+          LucideIcons.star,
           Colors.amber,
         ),
         _EventOption(
           LifeEventType.jobLoss,
           'Work Gap',
-          Icons.warning_amber,
+          LucideIcons.alertTriangle,
           Colors.orange,
         ),
         _EventOption(
           LifeEventType.careerBreak,
           'Career Break',
-          Icons.flight,
+          LucideIcons.plane,
           Colors.cyan,
         ),
         _EventOption(
           LifeEventType.business,
           'Start Business',
-          Icons.rocket_launch,
+          LucideIcons.rocket,
           Colors.purple,
         ),
         _EventOption(
           LifeEventType.jobChange,
           'Job Change',
-          Icons.swap_horiz,
+          LucideIcons.arrowLeftRight,
           Colors.teal,
         ),
       ],
@@ -212,53 +278,82 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
         _EventOption(
           LifeEventType.rent,
           'Renting',
-          Icons.apartment,
+          LucideIcons.building,
           Colors.brown,
         ),
-        _EventOption(LifeEventType.home, 'Buy Home', Icons.home, Colors.orange),
+        _EventOption(
+          LifeEventType.home,
+          'Buy Home',
+          LucideIcons.home,
+          Colors.orange,
+        ),
         _EventOption(
           LifeEventType.marriage,
           'Partner Up',
-          Icons.favorite,
+          LucideIcons.heart,
           Colors.pink,
         ),
         _EventOption(
           LifeEventType.children,
           'Have Kids',
-          Icons.child_care,
+          LucideIcons.baby,
           Colors.purple,
         ),
         _EventOption(
           LifeEventType.familySupport,
           'Support Family',
-          Icons.handshake,
+          LucideIcons.heartHandshake,
           Colors.indigo,
+        ),
+        _EventOption(
+          LifeEventType.car,
+          'Buy a Car',
+          LucideIcons.car,
+          Colors.blueGrey,
+        ),
+        _EventOption(
+          LifeEventType.insurance,
+          'Life Insurance',
+          LucideIcons.shieldCheck,
+          Colors.teal,
         ),
       ],
       '🌟 Life Changes': [
         _EventOption(
           LifeEventType.education,
           'Education',
-          Icons.school,
+          LucideIcons.graduationCap,
           Colors.indigo,
         ),
         _EventOption(
           LifeEventType.retirement,
           'Retire',
-          Icons.beach_access,
+          LucideIcons.palmtree,
           Colors.green,
         ),
         _EventOption(
           LifeEventType.health,
           'Health Event',
-          Icons.health_and_safety,
+          LucideIcons.heartPulse,
           Colors.red,
         ),
         _EventOption(
           LifeEventType.move,
           'Move Cities',
-          Icons.location_on,
+          LucideIcons.mapPin,
           Colors.teal,
+        ),
+        _EventOption(
+          LifeEventType.vacation,
+          'Vacation',
+          LucideIcons.plane,
+          Colors.cyan,
+        ),
+        _EventOption(
+          LifeEventType.oneTimeExpense,
+          'One-Time Expense',
+          LucideIcons.receipt,
+          Colors.deepOrange,
         ),
       ],
     };
@@ -378,6 +473,7 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
                           _events.add(newEvent);
                           _recalculate();
                         });
+                        _saveToHive();
 
                         // Immediately open editor for the new event to allow details config
                         Future.delayed(const Duration(milliseconds: 100), () {
@@ -408,6 +504,10 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
         return startAge + 1;
       case LifeEventType.familySupport:
         return startAge + 5;
+      case LifeEventType.car:
+        return startAge + 7;
+      case LifeEventType.insurance:
+        return startAge + 20;
       default:
         return null;
     }
@@ -427,86 +527,532 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
         return {'count': 1, 'costLevel': 'moderate'};
       case LifeEventType.health:
         return {'severity': 'moderate', 'hasInsurance': true};
+      case LifeEventType.car:
+        return {'carPrice': 30000};
+      case LifeEventType.vacation:
+        return {'tripCost': 5000};
+      case LifeEventType.oneTimeExpense:
+        return {'amount': 15000};
+      case LifeEventType.insurance:
+        return {'monthlyPremium': 100, 'coverageAmount': 500000};
+      case LifeEventType.jobLoss:
+        return {'gapMonths': 6.0, 'monthlySpending': 3000.0, 'hasSeverance': false, 'hasEmergencyFund': true};
+      case LifeEventType.careerBreak:
+        return {'breakMonths': 12.0, 'monthlySpending': 3000.0, 'hasSavings': true};
       default:
         return {};
     }
   }
 
+  // ─── Format helpers ────────────────────────────────────────────────────────
+
+  String _fmtPercent(double v) => '${v.toStringAsFixed(1)}%';
+  String _fmtYears(double v) => '${v.toInt()} yr${v.toInt() != 1 ? 's' : ''}';
+  String _fmtInt(double v) => v.toInt().toString();
+
+  Widget _buildToggleRow(
+    String label,
+    bool value,
+    ValueChanged<bool> onChanged,
+    StateSetter setModalState,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(fontSize: 13, color: FinSpanTheme.bodyGray),
+          ),
+          Switch(
+            value: value,
+            activeThumbColor: FinSpanTheme.primaryGreen,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            onChanged: (v) {
+              onChanged(v);
+              setModalState(() {});
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Full event editor ──────────────────────────────────────────────────────
+
   void _showEventEditor(LifeEvent event) {
+    final int index = _events.indexWhere((e) => e.id == event.id);
+    if (index == -1) return;
+
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        decoration: const BoxDecoration(
-          color: FinSpanTheme.backgroundLight,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  _getEventIcon(event.type),
-                  color: _getEventColor(event.type),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    event.name,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx2, setModalState) {
+          final ev = _events[index]; // always reads live state
+          final color = _getEventColor(ev.type);
+
+          // ── Param helpers ──────────────────────────────────────────────────
+          double p(String key, double fallback) {
+            final val = ev.params[key];
+            if (val is num) return val.toDouble();
+            return fallback;
+          }
+
+          void updateParam(String key, dynamic value) {
+            final newParams = Map<String, dynamic>.from(ev.params)..[key] = value;
+            setState(() {
+              _events[index] = LifeEvent(
+                id: ev.id, type: ev.type, name: ev.name,
+                startAge: ev.startAge, endAge: ev.endAge,
+                params: newParams,
+              );
+              _recalculate();
+            });
+            setModalState(() {});
+            _saveToHive();
+          }
+
+          void updateStartAge(int newAge) {
+            final dur = ev.endAge != null ? ev.endAge! - ev.startAge : 0;
+            setState(() {
+              _events[index] = LifeEvent(
+                id: ev.id, type: ev.type, name: ev.name,
+                startAge: newAge,
+                endAge: ev.endAge != null ? newAge + dur : null,
+                params: ev.params,
+              );
+              _recalculate();
+            });
+            setModalState(() {});
+            _saveToHive();
+          }
+
+          void updateDuration(int newDur) {
+            setState(() {
+              _events[index] = LifeEvent(
+                id: ev.id, type: ev.type, name: ev.name,
+                startAge: ev.startAge,
+                endAge: ev.startAge + newDur,
+                params: ev.params,
+              );
+              _recalculate();
+            });
+            setModalState(() {});
+            _saveToHive();
+          }
+
+          // ── Slider widget helper ───────────────────────────────────────────
+          Widget pSlider(
+            String label,
+            String formatted,
+            double value,
+            double min,
+            double max,
+            int divisions,
+            void Function(double) onChange,
+          ) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        label,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: FinSpanTheme.charcoal,
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          formatted,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: color,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  Slider(
+                    value: value.clamp(min, max),
+                    min: min,
+                    max: max,
+                    divisions: divisions,
+                    activeColor: color,
+                    inactiveColor: color.withValues(alpha: 0.18),
+                    onChanged: onChange,
+                  ),
+                ],
+              ),
+            );
+          }
+
+          // ── Event-specific controls per type ───────────────────────────────
+          List<Widget> buildControls() {
+            switch (ev.type) {
+              case LifeEventType.job:
+                return [
+                  pSlider('Annual Salary', _formatMoney(p('salary', 55000)),
+                    p('salary', 55000), 20000, 300000, 56,
+                    (v) => updateParam('salary', v)),
+                  pSlider('Annual Raise', _fmtPercent(p('annualRaise', 2.5)),
+                    p('annualRaise', 2.5), 0, 10, 20,
+                    (v) => updateParam('annualRaise', v)),
+                ];
+              case LifeEventType.jobChange:
+                return [
+                  pSlider('New Salary', _formatMoney(p('newSalary', 75000)),
+                    p('newSalary', 75000), 20000, 400000, 76,
+                    (v) => updateParam('newSalary', v)),
+                ];
+              case LifeEventType.sideHustle:
+                return [
+                  pSlider('Monthly Income', _formatMoney(p('monthlyIncome', 1000)),
+                    p('monthlyIncome', 1000), 100, 10000, 99,
+                    (v) => updateParam('monthlyIncome', v)),
+                ];
+              case LifeEventType.education:
+                return [
+                  pSlider('Total Tuition', _formatMoney(p('tuition', 40000)),
+                    p('tuition', 40000), 5000, 300000, 59,
+                    (v) => updateParam('tuition', v)),
+                  pSlider('Duration', _fmtYears(p('durationYears', 4)),
+                    p('durationYears', 4), 1, 8, 7,
+                    (v) => updateParam('durationYears', v.roundToDouble())),
+                ];
+              case LifeEventType.rent:
+                return [
+                  pSlider('Monthly Rent', _formatMoney(p('monthlyRent', 2000)),
+                    p('monthlyRent', 2000), 500, 8000, 75,
+                    (v) => updateParam('monthlyRent', v)),
+                ];
+              case LifeEventType.home:
+                return [
+                  pSlider('Home Price', _formatMoney(p('homePrice', 400000)),
+                    p('homePrice', 400000), 100000, 2000000, 76,
+                    (v) => updateParam('homePrice', v)),
+                  pSlider('Down Payment', _fmtPercent(p('downPaymentPercent', 20)),
+                    p('downPaymentPercent', 20), 0, 50, 10,
+                    (v) => updateParam('downPaymentPercent', v.roundToDouble())),
+                ];
+              case LifeEventType.marriage:
+                return [
+                  pSlider('Wedding Cost', _formatMoney(p('weddingCost', 25000)),
+                    p('weddingCost', 25000), 0, 150000, 30,
+                    (v) => updateParam('weddingCost', v)),
+                  pSlider('Partner Income', _formatMoney(p('partnerIncome', 55000)),
+                    p('partnerIncome', 55000), 0, 300000, 60,
+                    (v) => updateParam('partnerIncome', v)),
+                ];
+              case LifeEventType.children:
+                return [
+                  pSlider('Number of Kids', _fmtInt(p('numKids', 1)),
+                    p('numKids', 1), 1, 5, 4,
+                    (v) => updateParam('numKids', v.round())),
+                  pSlider('Annual Cost / Child', _formatMoney(p('annualCostPerKid', 15000)),
+                    p('annualCostPerKid', 15000), 5000, 40000, 35,
+                    (v) => updateParam('annualCostPerKid', v)),
+                ];
+              case LifeEventType.business:
+                return [
+                  pSlider('Startup Cost', _formatMoney(p('startupCost', 50000)),
+                    p('startupCost', 50000), 5000, 500000, 99,
+                    (v) => updateParam('startupCost', v)),
+                  pSlider('Expected Revenue', _formatMoney(p('expectedRevenue', 80000)),
+                    p('expectedRevenue', 80000), 20000, 500000, 48,
+                    (v) => updateParam('expectedRevenue', v)),
+                ];
+              case LifeEventType.retirement:
+                return [
+                  pSlider('Monthly Spending', _formatMoney(p('monthlySpending', 4000)),
+                    p('monthlySpending', 4000), 1500, 15000, 27,
+                    (v) => updateParam('monthlySpending', v)),
+                ];
+              case LifeEventType.health:
+                return [
+                  pSlider('Medical Cost', _formatMoney(p('medicalCost', 25000)),
+                    p('medicalCost', 25000), 1000, 300000, 299,
+                    (v) => updateParam('medicalCost', v)),
+                ];
+              case LifeEventType.move:
+                return [
+                  pSlider('Moving Cost', _formatMoney(p('movingCost', 5000)),
+                    p('movingCost', 5000), 1000, 50000, 49,
+                    (v) => updateParam('movingCost', v)),
+                ];
+              case LifeEventType.familySupport:
+                return [
+                  pSlider('Monthly Amount', _formatMoney(p('monthlyAmount', 500)),
+                    p('monthlyAmount', 500), 100, 5000, 49,
+                    (v) => updateParam('monthlyAmount', v)),
+                  pSlider('Support Duration', _fmtYears(p('supportYears', 5)),
+                    p('supportYears', 5), 1, 25, 24,
+                    (v) => updateParam('supportYears', v.roundToDouble())),
+                ];
+              case LifeEventType.car:
+                return [
+                  pSlider('Car Price', _formatMoney(p('carPrice', 30000)),
+                    p('carPrice', 30000), 5000, 150000, 29,
+                    (v) => updateParam('carPrice', v)),
+                ];
+              case LifeEventType.vacation:
+                return [
+                  pSlider('Trip Cost', _formatMoney(p('tripCost', 5000)),
+                    p('tripCost', 5000), 500, 50000, 99,
+                    (v) => updateParam('tripCost', v)),
+                ];
+              case LifeEventType.oneTimeExpense:
+                return [
+                  pSlider('Amount', _formatMoney(p('amount', 15000)),
+                    p('amount', 15000), 1000, 200000, 199,
+                    (v) => updateParam('amount', v)),
+                ];
+              case LifeEventType.insurance:
+                return [
+                  pSlider('Monthly Premium', _formatMoney(p('monthlyPremium', 100)),
+                    p('monthlyPremium', 100), 10, 2000, 199,
+                    (v) => updateParam('monthlyPremium', v)),
+                  pSlider('Coverage Amount', _formatMoney(p('coverageAmount', 500000)),
+                    p('coverageAmount', 500000), 10000, 5000000, 499,
+                    (v) => updateParam('coverageAmount', v)),
+                  pSlider('Term Length', _fmtYears(p('termLength', 20)),
+                    p('termLength', 20), 1, 40, 39,
+                    (v) => updateParam('termLength', v.roundToDouble())),
+                ];
+              case LifeEventType.jobLoss:
+                return [
+                  pSlider('Gap Duration (months)', _fmtInt(p('gapMonths', 6)),
+                    p('gapMonths', 6), 1, 24, 23,
+                    (v) => updateParam('gapMonths', v.roundToDouble())),
+                  pSlider('Monthly Spending During Gap', _formatMoney(p('monthlySpending', 3000)),
+                    p('monthlySpending', 3000), 500, 10000, 19,
+                    (v) => updateParam('monthlySpending', v)),
+                  _buildToggleRow(
+                    'Has Severance Pay',
+                    ev.params['hasSeverance'] as bool? ?? false,
+                    (v) => updateParam('hasSeverance', v),
+                    setModalState,
+                  ),
+                  _buildToggleRow(
+                    'Has Emergency Fund',
+                    ev.params['hasEmergencyFund'] as bool? ?? true,
+                    (v) => updateParam('hasEmergencyFund', v),
+                    setModalState,
+                  ),
+                ];
+              case LifeEventType.careerBreak:
+                return [
+                  pSlider('Break Duration (months)', _fmtInt(p('breakMonths', 12)),
+                    p('breakMonths', 12), 1, 36, 35,
+                    (v) => updateParam('breakMonths', v.roundToDouble())),
+                  pSlider('Monthly Spending', _formatMoney(p('monthlySpending', 3000)),
+                    p('monthlySpending', 3000), 500, 10000, 19,
+                    (v) => updateParam('monthlySpending', v)),
+                  _buildToggleRow(
+                    'Has Savings Buffer',
+                    ev.params['hasSavings'] as bool? ?? true,
+                    (v) => updateParam('hasSavings', v),
+                    setModalState,
+                  ),
+                ];
+            }
+          }
+
+          final controls = buildControls();
+          final startAgeMax = (_lifeExpectancy - 1).toDouble();
+          final startAgeMin = _currentAge.toDouble();
+          final startAgeDivisions =
+              (startAgeMax - startAgeMin).clamp(1, 80).toInt();
+          final curDuration = ev.endAge != null
+              ? (ev.endAge! - ev.startAge).clamp(1, 50)
+              : 1;
+
+          // ── Modal layout ───────────────────────────────────────────────────
+          return DraggableScrollableSheet(
+            initialChildSize: 0.72,
+            maxChildSize: 0.92,
+            minChildSize: 0.4,
+            builder: (_, scrollCtrl) => Container(
+              decoration: const BoxDecoration(
+                color: FinSpanTheme.backgroundLight,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: ListView(
+                controller: scrollCtrl,
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+                children: [
+                  // Handle bar
+                  Center(
+                    child: Container(
+                      width: 40, height: 4,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Age ${event.startAge}${event.endAge != null ? ' – ${event.endAge}' : ''}',
-              style: const TextStyle(
-                color: FinSpanTheme.bodyGray,
-                fontSize: 14,
-              ),
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                icon: const Icon(Icons.delete_outline, color: Colors.red),
-                label: const Text(
-                  'Remove Event',
-                  style: TextStyle(color: Colors.red),
-                ),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Colors.red),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+
+                  // Header
+                  Row(
+                    children: [
+                      Container(
+                        width: 46, height: 46,
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(_getEventIcon(ev.type), color: color, size: 22),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              ev.name,
+                              style: const TextStyle(
+                                fontSize: 17, fontWeight: FontWeight.bold,
+                                color: FinSpanTheme.charcoal,
+                              ),
+                            ),
+                            Text(
+                              'Age ${ev.startAge}${ev.endAge != null ? ' – ${ev.endAge}' : ''}',
+                              style: const TextStyle(
+                                fontSize: 12, color: FinSpanTheme.bodyGray,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _saveHistory();
-                  setState(() {
-                    _events.removeWhere((e) => e.id == event.id);
-                    _recalculate();
-                  });
-                },
+                  const SizedBox(height: 16),
+
+                  // ── Timing card ──────────────────────────────────────────
+                  _editorCard(
+                    label: 'TIMING',
+                    children: [
+                      pSlider(
+                        'Start Age', 'Age ${ev.startAge}',
+                        ev.startAge.toDouble(),
+                        startAgeMin, startAgeMax, startAgeDivisions,
+                        (v) => updateStartAge(v.round()),
+                      ),
+                      if (ev.endAge != null)
+                        pSlider(
+                          'Duration', _fmtYears(curDuration.toDouble()),
+                          curDuration.toDouble(), 1, 50, 49,
+                          (v) => updateDuration(v.round()),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+
+                  // ── Parameters card (event-specific) ─────────────────────
+                  if (controls.isNotEmpty) ...[
+                    _editorCard(label: 'PARAMETERS', children: controls),
+                    const SizedBox(height: 10),
+                  ],
+
+                  // Live preview tip
+                  Center(
+                    child: Text(
+                      '⚡ Chart updates live as you drag',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey[500],
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Delete button
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      icon: const Icon(LucideIcons.trash2, color: Colors.red, size: 16),
+                      label: const Text(
+                        'Remove Event',
+                        style: TextStyle(color: Colors.red),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Colors.red),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _saveHistory();
+                        setState(() {
+                          _events.removeWhere((e) => e.id == ev.id);
+                          _recalculate();
+                        });
+                        _saveToHive();
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Close'),
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Close'),
-              ),
-            ),
-          ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// Reusable card container used in the event editor.
+  Widget _editorCard({required String label, required List<Widget> children}) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: FinSpanTheme.dividerColor.withValues(alpha: 0.5),
         ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.2,
+              color: FinSpanTheme.bodyGray,
+            ),
+          ),
+          const SizedBox(height: 6),
+          ...children,
+        ],
       ),
     );
   }
@@ -536,12 +1082,12 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
         actions: [
           if (_history.isNotEmpty)
             TextButton.icon(
-              icon: const Icon(Icons.undo, size: 18),
+              icon: const Icon(LucideIcons.undo2, size: 18),
               label: const Text('Undo'),
               onPressed: _undo,
             ),
           TextButton.icon(
-            icon: const Icon(Icons.refresh, size: 18),
+            icon: const Icon(LucideIcons.refreshCw, size: 18),
             label: const Text('Reset'),
             onPressed: _reset,
           ),
@@ -683,53 +1229,162 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
   }
 
   Widget _buildWealthChart(double dynamicMaxY) {
+    // ── Reference age markers ─────────────────────────────────────────────
+    final double retireAge = _events
+        .where((e) => e.type == LifeEventType.retirement)
+        .map((e) => e.startAge.toDouble())
+        .fold<double>(widget.data?.retirementAge.toDouble() ?? 65, (_, a) => a);
+    final double ssAge =
+        (widget.data?.socialSecurityAge ?? 67).toDouble();
+    final double lifeExpAge = _lifeExpectancy.toDouble();
+
+    // Home equity added to total for "Net Worth incl. Real Estate"
+    final double homeEquity = widget.data?.housingStatus == 'Own'
+        ? (widget.data!.homeValue - widget.data!.mortgageBalance)
+            .clamp(0, double.infinity)
+        : 0;
+
+    // ── Band width for reference lines ────────────────────────────────────
+    const double bw = 0.3;
+
     return FinSpanCard(
       padding: const EdgeInsets.all(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Wealth Trajectory',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          // ── Header ───────────────────────────────────────────────────────
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Wealth Trajectory',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                        color: FinSpanTheme.charcoal,
+                        letterSpacing: -0.3),
+                  ),
+                  Text(
+                    'Based on your simulation',
+                    style: TextStyle(
+                        color: FinSpanTheme.bodyGray, fontSize: 11),
+                  ),
+                ],
+              ),
+              Row(
+                children: [
+                  const Text(
+                    'Monte Carlo',
+                    style:
+                        TextStyle(fontSize: 11, color: FinSpanTheme.bodyGray),
+                  ),
+                  Switch(
+                    value: _enableMonteCarlo,
+                    onChanged: (v) {
+                      setState(() {
+                        _enableMonteCarlo = v;
+                        _recalculate();
+                      });
+                      LocalStorageService.saveMcEnabled(_uid, enabled: v);
+                    },
+                    activeThumbColor: FinSpanTheme.primaryGreen,
+                    activeTrackColor:
+                        FinSpanTheme.primaryGreen.withValues(alpha: 0.4),
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ],
+              ),
+            ],
           ),
-          const Text(
-            'Live preview — drag to explore',
-            style: TextStyle(color: FinSpanTheme.bodyGray, fontSize: 12),
-          ),
-          const SizedBox(height: 16),
+
+          const SizedBox(height: 12),
+
+          // ── Chart ─────────────────────────────────────────────────────────
           SizedBox(
-            height: 220,
+            height: 240,
             child: SfCartesianChart(
               plotAreaBorderWidth: 0,
               margin: EdgeInsets.zero,
-              trackballBehavior: TrackballBehavior(
-                enable: true,
-                activationMode: ActivationMode.singleTap,
-                tooltipSettings: const InteractiveTooltip(enable: true),
-              ),
               primaryXAxis: NumericAxis(
                 minimum: _currentAge.toDouble(),
-                maximum: _lifeExpectancy.toDouble(),
+                maximum: lifeExpAge,
                 interval: 10,
                 majorGridLines: const MajorGridLines(width: 0),
-                axisLabelFormatter: (AxisLabelRenderDetails d) {
-                  return ChartAxisLabel('Age ${d.value.toInt()}', null);
-                },
+                axisLine: const AxisLine(width: 0),
+                majorTickLines: const MajorTickLines(size: 0),
+                axisLabelFormatter: (AxisLabelRenderDetails d) =>
+                    ChartAxisLabel('${d.value.toInt()}', null),
                 plotBands: [
+                  // ── Current age (green solid) ──────────────────────────
                   PlotBand(
                     isVisible: true,
-                    start: _currentAge.toDouble(),
-                    end: _currentAge.toDouble() + 0.4,
-                    color: FinSpanTheme.primaryGreen.withValues(alpha: 0.9),
+                    start: _currentAge.toDouble() - bw / 2,
+                    end: _currentAge.toDouble() + bw / 2,
+                    color: FinSpanTheme.primaryGreen.withValues(alpha: 0.25),
+                    borderColor: FinSpanTheme.primaryGreen,
+                    borderWidth: 2,
                     text: 'Age $_currentAge',
                     textAngle: 0,
                     textStyle: const TextStyle(
-                      color: Colors.white,
+                      color: FinSpanTheme.primaryGreen,
                       fontSize: 9,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w700,
                     ),
                     horizontalTextAlignment: TextAnchor.start,
                     verticalTextAlignment: TextAnchor.end,
+                  ),
+                  // ── Retirement age (orange dashed) ─────────────────────
+                  if (retireAge > _currentAge)
+                    PlotBand(
+                      isVisible: true,
+                      start: retireAge - bw / 2,
+                      end: retireAge + bw / 2,
+                      color: const Color(0xFFF59E0B).withValues(alpha: 0.10),
+                      borderColor: const Color(0xFFF59E0B),
+                      borderWidth: 1.8,
+                      dashArray: const <double>[5, 4],
+                      text: 'Retire',
+                      textAngle: 0,
+                      textStyle: const TextStyle(
+                        color: Color(0xFFF59E0B),
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      horizontalTextAlignment: TextAnchor.start,
+                      verticalTextAlignment: TextAnchor.end,
+                    ),
+                  // ── Social Security age (blue dotted) ──────────────────
+                  if (ssAge > _currentAge && ssAge != retireAge)
+                    PlotBand(
+                      isVisible: true,
+                      start: ssAge - bw / 2,
+                      end: ssAge + bw / 2,
+                      color: const Color(0xFF3B82F6).withValues(alpha: 0.10),
+                      borderColor: const Color(0xFF3B82F6),
+                      borderWidth: 1.5,
+                      dashArray: const <double>[2, 3],
+                      text: 'SS',
+                      textAngle: 0,
+                      textStyle: const TextStyle(
+                        color: Color(0xFF3B82F6),
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      horizontalTextAlignment: TextAnchor.start,
+                      verticalTextAlignment: TextAnchor.end,
+                    ),
+                  // ── Life expectancy (red solid) ────────────────────────
+                  PlotBand(
+                    isVisible: true,
+                    start: lifeExpAge - bw / 2,
+                    end: lifeExpAge + bw / 2,
+                    color: Colors.red.withValues(alpha: 0.08),
+                    borderColor: Colors.red.shade400,
+                    borderWidth: 2,
                   ),
                 ],
               ),
@@ -739,108 +1394,82 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
                 interval: dynamicMaxY / 4,
                 axisLine: const AxisLine(width: 0),
                 majorTickLines: const MajorTickLines(size: 0),
+                majorGridLines: MajorGridLines(
+                  width: 0.5,
+                  color: Colors.grey.withValues(alpha: 0.12),
+                  dashArray: const <double>[4, 4],
+                ),
                 axisLabelFormatter: (AxisLabelRenderDetails d) {
                   final v = d.value.toDouble();
-                  if (v == 0) {
-                    return ChartAxisLabel('\$0', null);
-                  }
+                  if (v == 0) return ChartAxisLabel('\$0', null);
                   if (v >= 1000000) {
                     return ChartAxisLabel(
-                      '\$${(v / 1000000).toStringAsFixed(1)}M',
-                      null,
-                    );
+                        '\$${(v / 1000000).toStringAsFixed(1)}M', null);
                   }
                   return ChartAxisLabel('\$${(v / 1000).toInt()}K', null);
                 },
-              ),
-              series: <CartesianSeries>[
-                if (_enableMonteCarlo && _mcResult != null) ...[
-                  SplineSeries<LocalWealthPoint, double>(
-                    dataSource: _wealthData, // The deterministic base plan
-                    xValueMapper: (d, _) => d.age.toDouble(),
-                    yValueMapper: (d, _) => d.total,
-                    color: const Color(0xFF6366F1), // Indigo/Blue
-                    name: 'Your Plan',
-                    animationDuration: 0,
-                    width: 3,
-                  ),
-                  SplineSeries<LocalWealthPoint, double>(
-                    dataSource: _mcResult!.p90,
-                    xValueMapper: (d, _) => d.age.toDouble(),
-                    yValueMapper: (d, _) => d.total,
-                    color: FinSpanTheme.primaryGreen.withValues(alpha: 0.8),
-                    name: '90th Percentile',
-                    animationDuration: 0,
-                    dashArray: const <double>[5, 5],
-                    width: 1.5,
-                  ),
-                  SplineSeries<LocalWealthPoint, double>(
-                    dataSource: _mcResult!.median,
-                    xValueMapper: (d, _) => d.age.toDouble(),
-                    yValueMapper: (d, _) => d.total,
-                    color: const Color(0xFFF59E0B), // Orange
-                    name: '50th Percentile',
-                    animationDuration: 0,
-                    width: 2,
-                  ),
-                  SplineSeries<LocalWealthPoint, double>(
-                    dataSource: _mcResult!.p10,
-                    xValueMapper: (d, _) => d.age.toDouble(),
-                    yValueMapper: (d, _) => d.total,
-                    color: Colors.red.withValues(alpha: 0.8),
-                    name: '10th Percentile',
-                    animationDuration: 0,
-                    dashArray: const <double>[5, 5],
-                    width: 1.5,
-                  ),
-                ] else ...[
-                  StackedAreaSeries<LocalWealthPoint, double>(
-                    dataSource: _wealthData,
-                    xValueMapper: (d, _) => d.age.toDouble(),
-                    yValueMapper: (d, _) => d.taxable,
-                    color: const Color(0xFF6B7280).withValues(alpha: 0.7),
-                    name: 'Taxable',
-                    animationDuration: 0,
-                  ),
-                  StackedAreaSeries<LocalWealthPoint, double>(
-                    dataSource: _wealthData,
-                    xValueMapper: (d, _) => d.age.toDouble(),
-                    yValueMapper: (d, _) => d.taxDeferred,
-                    color: const Color(0xFF10B981).withValues(alpha: 0.7),
-                    name: 'Tax-Deferred',
-                    animationDuration: 0,
-                  ),
-                  StackedAreaSeries<LocalWealthPoint, double>(
-                    dataSource: _wealthData,
-                    xValueMapper: (d, _) => d.age.toDouble(),
-                    yValueMapper: (d, _) => d.roth,
-                    color: const Color(0xFFF59E0B).withValues(alpha: 0.7),
-                    name: 'Roth',
-                    animationDuration: 0,
+                plotBands: <PlotBand>[
+                  PlotBand(
+                    isVisible: true,
+                    start: 0,
+                    end: 0,
+                    borderColor: Colors.red.shade300,
+                    borderWidth: 1,
+                    dashArray: const <double>[6, 4],
+                    text: 'Break Even',
+                    textStyle: TextStyle(
+                      color: Colors.red.shade400,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    horizontalTextAlignment: TextAnchor.end,
+                    verticalTextAlignment: TextAnchor.start,
                   ),
                 ],
-              ],
+              ),
+              series: _enableMonteCarlo && _mcResult != null
+                  ? _buildMcSeries()
+                  : _buildStackedSeries(homeEquity),
             ),
           ),
-          const SizedBox(height: 12),
+
+          const SizedBox(height: 10),
+
+          // ── Legend ────────────────────────────────────────────────────────
           Wrap(
-            alignment: WrapAlignment.center,
+            spacing: 14,
+            runSpacing: 6,
+            children: _enableMonteCarlo
+                ? [
+                    _legendItem('Your Plan', const Color(0xFF6366F1),
+                        isLine: true),
+                    _legendItem('90th Pct', FinSpanTheme.primaryGreen,
+                        isLine: true, dashed: true),
+                    _legendItem('50th Pct', const Color(0xFFF59E0B),
+                        isLine: true),
+                    _legendItem('10th Pct', Colors.red.shade400,
+                        isLine: true, dashed: true),
+                  ]
+                : [
+                    _legendItem('Taxable', const Color(0xFF4ECDC4)),
+                    _legendItem('Tax-Deferred', const Color(0xFF7C3AED)),
+                    _legendItem('Roth', const Color(0xFF10B981)),
+                    _legendItem(
+                        'Net Worth', const Color(0xFF9CA3AF), isLine: true),
+                  ],
+          ),
+
+          // ── Marker legend ─────────────────────────────────────────────────
+          const SizedBox(height: 6),
+          Wrap(
             spacing: 12,
             runSpacing: 4,
             children: [
-              if (_enableMonteCarlo) ...[
-                _legendDot('Your Plan', const Color(0xFF6366F1)),
-                _legendDot(
-                  '90th Pct',
-                  FinSpanTheme.primaryGreen.withValues(alpha: 0.8),
-                ),
-                _legendDot('10th Pct', Colors.red.withValues(alpha: 0.8)),
-                _legendDot('50th Pct', const Color(0xFFF59E0B)),
-              ] else ...[
-                _legendDot('Taxable', const Color(0xFF6B7280)),
-                _legendDot('Tax-Deferred', const Color(0xFF10B981)),
-                _legendDot('Roth', const Color(0xFFF59E0B)),
-              ],
+              _markerLabel('Retirement', const Color(0xFFF59E0B),
+                  dashed: true),
+              _markerLabel('Social Security', const Color(0xFF3B82F6),
+                  dotted: true),
+              _markerLabel('Life Expectancy', Colors.red.shade400),
             ],
           ),
         ],
@@ -848,20 +1477,151 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
     );
   }
 
-  Widget _legendDot(String label, Color color) {
+  List<CartesianSeries> _buildStackedSeries(double homeEquity) => [
+        // ── Taxable (bottom layer) ──────────────────────────────────────────
+        StackedAreaSeries<LocalWealthPoint, double>(
+          dataSource: _wealthData,
+          xValueMapper: (d, _) => d.age.toDouble(),
+          yValueMapper: (d, _) => d.taxable.clamp(0, double.infinity),
+          name: 'Taxable',
+          groupName: 'wealth',
+          color: const Color(0xFF4ECDC4).withValues(alpha: 0.55),
+          borderColor: const Color(0xFF4ECDC4),
+          borderWidth: 1,
+          animationDuration: 0,
+        ),
+        // ── Tax-Deferred (middle) ───────────────────────────────────────────
+        StackedAreaSeries<LocalWealthPoint, double>(
+          dataSource: _wealthData,
+          xValueMapper: (d, _) => d.age.toDouble(),
+          yValueMapper: (d, _) => d.taxDeferred.clamp(0, double.infinity),
+          name: 'Tax-Deferred',
+          groupName: 'wealth',
+          color: const Color(0xFF7C3AED).withValues(alpha: 0.55),
+          borderColor: const Color(0xFF7C3AED),
+          borderWidth: 1,
+          animationDuration: 0,
+        ),
+        // ── Roth (top layer) ────────────────────────────────────────────────
+        StackedAreaSeries<LocalWealthPoint, double>(
+          dataSource: _wealthData,
+          xValueMapper: (d, _) => d.age.toDouble(),
+          yValueMapper: (d, _) => d.roth.clamp(0, double.infinity),
+          name: 'Roth',
+          groupName: 'wealth',
+          color: const Color(0xFF10B981).withValues(alpha: 0.55),
+          borderColor: const Color(0xFF10B981),
+          borderWidth: 1,
+          animationDuration: 0,
+        ),
+        // ── Net Worth dots line ─────────────────────────────────────────────
+        SplineSeries<LocalWealthPoint, double>(
+          dataSource: _wealthData,
+          xValueMapper: (d, _) => d.age.toDouble(),
+          yValueMapper: (d, _) =>
+              (d.total + homeEquity).clamp(0, double.infinity),
+          name: 'Net Worth',
+          color: const Color(0xFF9CA3AF),
+          width: 1.5,
+          markerSettings: const MarkerSettings(
+            isVisible: true,
+            height: 4,
+            width: 4,
+            shape: DataMarkerType.circle,
+            color: Color(0xFF9CA3AF),
+            borderWidth: 0,
+          ),
+          animationDuration: 0,
+        ),
+      ];
+
+  List<CartesianSeries> _buildMcSeries() => [
+        SplineSeries<LocalWealthPoint, double>(
+          dataSource: _deterministicData,
+          xValueMapper: (d, _) => d.age.toDouble(),
+          yValueMapper: (d, _) => d.total,
+          name: 'Your Plan',
+          color: const Color(0xFF6366F1),
+          width: 2.5,
+          animationDuration: 0,
+        ),
+        SplineSeries<LocalWealthPoint, double>(
+          dataSource: _mcResult!.p90,
+          xValueMapper: (d, _) => d.age.toDouble(),
+          yValueMapper: (d, _) => d.total,
+          name: '90th Pct',
+          color: FinSpanTheme.primaryGreen.withValues(alpha: 0.8),
+          width: 1.5,
+          dashArray: const <double>[5, 4],
+          animationDuration: 0,
+        ),
+        SplineSeries<LocalWealthPoint, double>(
+          dataSource: _mcResult!.median,
+          xValueMapper: (d, _) => d.age.toDouble(),
+          yValueMapper: (d, _) => d.total,
+          name: '50th Pct',
+          color: const Color(0xFFF59E0B),
+          width: 2,
+          animationDuration: 0,
+        ),
+        SplineSeries<LocalWealthPoint, double>(
+          dataSource: _mcResult!.p10,
+          xValueMapper: (d, _) => d.age.toDouble(),
+          yValueMapper: (d, _) => d.total,
+          name: '10th Pct',
+          color: Colors.red.withValues(alpha: 0.8),
+          width: 1.5,
+          dashArray: const <double>[5, 4],
+          animationDuration: 0,
+        ),
+      ];
+
+  Widget _legendItem(String label, Color color,
+      {bool isLine = false, bool dashed = false}) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        isLine
+            ? SizedBox(
+                width: 18,
+                child: CustomPaint(
+                  size: const Size(18, 8),
+                  painter: _LinePainter(color: color, dashed: dashed),
+                ),
+              )
+            : Container(
+                width: 10,
+                height: 10,
+                decoration:
+                    BoxDecoration(color: color, shape: BoxShape.circle),
+              ),
+        const SizedBox(width: 5),
+        Text(label,
+            style:
+                const TextStyle(fontSize: 10, color: FinSpanTheme.bodyGray)),
+      ],
+    );
+  }
+
+  Widget _markerLabel(String label, Color color,
+      {bool dashed = false, bool dotted = false}) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 14,
+          child: CustomPaint(
+            size: const Size(14, 8),
+            painter: _LinePainter(
+                color: color, dashed: dashed || dotted, vertical: true),
+          ),
         ),
         const SizedBox(width: 4),
-        Text(
-          label,
-          style: const TextStyle(fontSize: 10, color: FinSpanTheme.bodyGray),
-        ),
+        Text(label,
+            style: TextStyle(
+                fontSize: 9.5,
+                color: color,
+                fontWeight: FontWeight.w600)),
       ],
     );
   }
@@ -877,41 +1637,85 @@ class _SimulatorLifeWeaverScreenState extends State<SimulatorLifeWeaverScreen>
     switch (type) {
       case LifeEventType.job:
         return Colors.blue;
+      case LifeEventType.jobChange:
+        return Colors.teal;
+      case LifeEventType.jobLoss:
+        return Colors.orange;
+      case LifeEventType.sideHustle:
+        return Colors.amber;
+      case LifeEventType.careerBreak:
+        return Colors.cyan;
       case LifeEventType.home:
         return Colors.orange;
+      case LifeEventType.rent:
+        return Colors.brown;
       case LifeEventType.marriage:
         return Colors.pink;
       case LifeEventType.children:
         return Colors.purple;
+      case LifeEventType.familySupport:
+        return Colors.indigo;
       case LifeEventType.retirement:
         return Colors.green;
       case LifeEventType.education:
         return Colors.indigo;
       case LifeEventType.business:
+        return Colors.purple;
+      case LifeEventType.health:
+        return Colors.red;
+      case LifeEventType.move:
         return Colors.teal;
-      default:
-        return Colors.grey;
+      case LifeEventType.car:
+        return Colors.blueGrey;
+      case LifeEventType.vacation:
+        return Colors.cyan;
+      case LifeEventType.oneTimeExpense:
+        return Colors.deepOrange;
+      case LifeEventType.insurance:
+        return Colors.teal;
     }
   }
 
   IconData _getEventIcon(LifeEventType type) {
     switch (type) {
       case LifeEventType.job:
-        return Icons.work;
+        return LucideIcons.briefcase;
+      case LifeEventType.jobChange:
+        return LucideIcons.arrowLeftRight;
+      case LifeEventType.jobLoss:
+        return LucideIcons.alertTriangle;
+      case LifeEventType.sideHustle:
+        return LucideIcons.star;
+      case LifeEventType.careerBreak:
+        return LucideIcons.plane;
       case LifeEventType.home:
-        return Icons.home;
+        return LucideIcons.home;
+      case LifeEventType.rent:
+        return LucideIcons.building;
       case LifeEventType.marriage:
-        return Icons.favorite;
+        return LucideIcons.heart;
       case LifeEventType.children:
-        return Icons.child_care;
+        return LucideIcons.baby;
+      case LifeEventType.familySupport:
+        return LucideIcons.heartHandshake;
       case LifeEventType.retirement:
-        return Icons.beach_access;
+        return LucideIcons.palmtree;
       case LifeEventType.education:
-        return Icons.school;
+        return LucideIcons.graduationCap;
       case LifeEventType.business:
-        return Icons.rocket_launch;
-      default:
-        return Icons.event;
+        return LucideIcons.rocket;
+      case LifeEventType.health:
+        return LucideIcons.heartPulse;
+      case LifeEventType.move:
+        return LucideIcons.mapPin;
+      case LifeEventType.car:
+        return LucideIcons.car;
+      case LifeEventType.vacation:
+        return LucideIcons.plane;
+      case LifeEventType.oneTimeExpense:
+        return LucideIcons.receipt;
+      case LifeEventType.insurance:
+        return LucideIcons.shieldCheck;
     }
   }
 }
@@ -923,4 +1727,51 @@ class _EventOption {
   final Color color;
 
   const _EventOption(this.type, this.label, this.icon, this.color);
+}
+
+/// Draws a small horizontal line (solid or dashed) for legend use.
+/// When [vertical] is true draws a vertical tick for the marker legend.
+class _LinePainter extends CustomPainter {
+  final Color color;
+  final bool dashed;
+  final bool vertical;
+  const _LinePainter(
+      {required this.color, this.dashed = false, this.vertical = false});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = vertical ? 2 : 1.5
+      ..style = PaintingStyle.stroke;
+
+    if (vertical) {
+      final cx = size.width / 2;
+      if (dashed) {
+        double y = 0;
+        while (y < size.height) {
+          canvas.drawLine(Offset(cx, y), Offset(cx, (y + 2).clamp(0, size.height)), paint);
+          y += 4;
+        }
+      } else {
+        canvas.drawLine(Offset(cx, 0), Offset(cx, size.height), paint);
+      }
+      return;
+    }
+
+    final cy = size.height / 2;
+    if (dashed) {
+      double x = 0;
+      while (x < size.width) {
+        canvas.drawLine(Offset(x, cy), Offset((x + 4).clamp(0, size.width), cy), paint);
+        x += 7;
+      }
+    } else {
+      canvas.drawLine(Offset(0, cy), Offset(size.width, cy), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_LinePainter old) =>
+      old.color != color || old.dashed != dashed;
 }

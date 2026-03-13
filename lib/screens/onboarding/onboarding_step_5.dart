@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../theme/finspan_theme.dart';
 
 import 'onboarding_data.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 
 class OnboardingStep5Screen extends StatefulWidget {
   final VoidCallback onNext;
@@ -202,7 +203,7 @@ class _OnboardingStep5ScreenState extends State<OnboardingStep5Screen> {
 
                     const SizedBox(height: 32),
                     _buildSectionHeader(
-                      Icons.trending_up,
+                      LucideIcons.trendingUp,
                       "Annual 401(k) Contributions",
                       badge: "✨ NEW",
                     ),
@@ -261,7 +262,7 @@ class _OnboardingStep5ScreenState extends State<OnboardingStep5Screen> {
                     _buildCombinedSummary(),
 
                     const SizedBox(height: 32),
-                    _buildSectionHeader(Icons.bar_chart, "Investment Returns"),
+                    _buildSectionHeader(LucideIcons.barChart2, "Investment Returns"),
                     const SizedBox(height: 16),
                     _buildReturnTip(),
                     const SizedBox(height: 24),
